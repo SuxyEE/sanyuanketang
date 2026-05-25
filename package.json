@@ -1,0 +1,22 @@
+{
+  "name": "snyuanketang",
+  "version": "1.0.0",
+  "private": true,
+  "description": "交互课堂系统 - 集美工业职业学院多专业通用智慧课堂平台",
+  "scripts": {
+    "dev:screen": "pnpm --filter @snyuan/teacher-screen dev",
+    "dev:teacher": "pnpm --filter @snyuan/teacher-tablet dev",
+    "dev:student": "pnpm --filter @snyuan/student-tablet dev",
+    "dev:admin": "pnpm --filter @snyuan/admin dev",
+    "dev:server": "pnpm --filter @snyuan/server dev",
+    "dev:all": "pnpm -r --parallel dev",
+    "build:all": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "clean": "pnpm -r exec rm -rf node_modules dist .turbo"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "packageManager": "pnpm@9.15.9+sha512.68046141893c66fad01c079231128e9afb89ef87e2691d69e4d40eee228988295fd4682181bae55b58418c3a253bde65a505ec7c5f9403ece5cc3cd37dcf2531"
+}
