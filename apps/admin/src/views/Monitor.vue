@@ -97,36 +97,21 @@
         <el-button type="primary" @click="handleBroadcast">发送广播</el-button>
       </template>
     </el-dialog>
-
-    <el-dialog v-model="showDetailDialog" :title="detailRoom?.name || '课堂详情'" width="560px">
-      <div v-if="detailRoom" class="detail-content">
-        <el-descriptions :column="2" border>
-          <el-descriptions-item label="教师">{{ detailRoom.teacher }}</el-descriptions-item>
-          <el-descriptions-item label="班级">{{ detailRoom.class }}</el-descriptions-item>
-          <el-descriptions-item label="在线">{{ detailRoom.online }} / {{ detailRoom.total }}</el-descriptions-item>
-          <el-descriptions-item label="当前活动">{{ detailRoom.activity }}</el-descriptions-item>
-          <el-descriptions-item label="完成率">{{ detailRoom.completion }}%</el-descriptions-item>
-          <el-descriptions-item label="状态">
-            <el-tag :type="detailRoom.live ? 'success' : 'info'" size="small">{{ detailRoom.live ? '进行中' : '已结束' }}</el-tag>
-          </el-descriptions-item>
-        </el-descriptions>
-      </div>
-    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useAdminSocket } from '../composables/useAdminSocket'
 
+const router = useRouter()
 const { isConnected, rooms, liveEvents, sendBroadcast, refreshRooms } = useAdminSocket()
 
 const showBroadcastDialog = ref(false)
-const showDetailDialog = ref(false)
 const broadcastText = ref('')
-const detailRoom = ref<any>(null)
 
 const staticClassrooms = ref([
   { id: '1', name: '工业机器人编程实训', teacher: '李明', class: '机器人2401班', online: 42, total: 45, completion: 60, activity: '实操练习', live: true },
@@ -171,8 +156,7 @@ async function handleBroadcast() {
 }
 
 function viewDetail(room: any) {
-  detailRoom.value = room
-  showDetailDialog.value = true
+  router.push({ name: 'ClassroomLive', params: { roomId: room.id } })
 }
 
 function sendNotification(room: any) {
@@ -389,7 +373,4 @@ function sendNotification(room: any) {
   flex-shrink: 0;
 }
 
-.detail-content {
-  padding: 8px 0;
-}
 </style>

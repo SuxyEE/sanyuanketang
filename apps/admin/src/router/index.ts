@@ -23,6 +23,7 @@ const router = createRouter({
         { path: 'students/:studentId', name: 'StudentProfile', component: () => import('../views/StudentProfile.vue'), meta: { title: '学生画像' } },
         { path: 'courses', name: 'Courses', component: () => import('../views/Courses.vue'), meta: { title: '课程管理' } },
         { path: 'monitor', name: 'Monitor', component: () => import('../views/Monitor.vue'), meta: { title: '实时监控' } },
+        { path: 'monitor/:roomId', name: 'ClassroomLive', component: () => import('../views/ClassroomLive.vue'), meta: { title: '课堂详情' } },
         { path: 'reports', name: 'Reports', component: () => import('../views/Reports.vue'), meta: { title: '数据报告' } },
         { path: 'users', name: 'Users', component: () => import('../views/Users.vue'), meta: { title: '用户管理' } },
       ],
