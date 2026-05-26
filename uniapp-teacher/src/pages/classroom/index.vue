@@ -284,6 +284,9 @@
           </button>
         </view>
         <scroll-view class="report-body" scroll-y>
+          <view v-if="quizReport.randomMode" class="random-mode-badge">
+            <text>随机发题 · 题库 {{ quizReport.poolSize }} 题 · 每人 {{ quizReport.perStudentCount }} 题</text>
+          </view>
           <view class="review-summary">
             <view class="summary-stat">
               <text class="s-num">{{ quizReport.avgScore }}</text>
@@ -338,14 +341,35 @@
           </view>
 
           <view v-if="quizReport.submissions && quizReport.submissions.length > 0" class="report-block">
-            <text class="section-label neutral">学生分数（{{ quizReport.submissions.length }}）</text>
+            <text class="section-label neutral">学生答题详情（{{ quizReport.submissions.length }}）</text>
             <view
               v-for="sub in quizReport.submissions"
               :key="sub.studentId"
-              class="submission-row"
+              class="student-detail-block"
             >
-              <text>{{ sub.studentName }}</text>
-              <text :class="(sub.score || 0) >= 80 ? 'ok-text' : 'muted-text'">{{ sub.score || 0 }} 分</text>
+              <view class="submission-row">
+                <text class="student-detail-name">{{ sub.studentName }}</text>
+                <text :class="(sub.score || 0) >= 80 ? 'ok-text' : 'muted-text'">{{ sub.score || 0 }} 分</text>
+              </view>
+              <view
+                v-for="(qs, idx) in studentQuestions(sub)"
+                :key="qs.question.id"
+                class="per-q-row"
+              >
+                <view class="per-q-head">
+                  <text class="per-q-idx">{{ idx + 1 }}.</text>
+                  <text class="per-q-title">{{ truncate(qs.question.content, 20) }}</text>
+                  <text
+                    v-if="sub.perQuestion && sub.perQuestion[qs.question.id]"
+                    class="per-q-badge"
+                    :class="sub.perQuestion[qs.question.id].correct ? 'badge-ok' : 'badge-wrong'"
+                  >{{ sub.perQuestion[qs.question.id].correct ? '✓' : '✗' }} {{ sub.perQuestion[qs.question.id].earned ?? sub.perQuestion[qs.question.id].score ?? 0 }}/{{ sub.perQuestion[qs.question.id].points ?? qs.question.points ?? 10 }}</text>
+                  <text v-else class="per-q-badge badge-miss">未作答</text>
+                </view>
+                <view v-if="sub.perQuestion && sub.perQuestion[qs.question.id]?.comment" class="per-q-comment">
+                  <text>{{ sub.perQuestion[qs.question.id].comment }}</text>
+                </view>
+              </view>
             </view>
           </view>
         </scroll-view>
@@ -411,16 +435,11 @@
             <template v-if="quizMode === 'ai'">
               <input v-model="quizTopic" class="input" placeholder="知识点，例如：机械臂坐标系" />
               <view class="option-row">
-                <button v-for="n in [3, 5, 8, 10]" :key="n" class="option-card compact" :class="{ active: quizCount === n }" @tap="quizCount = n">
-                  <text>{{ n }} 题</text>
-                </button>
-              </view>
-              <view class="option-row">
                 <button v-for="d in difficultyOptions" :key="d.value" class="option-card compact" :class="{ active: quizDifficulty === d.value }" @tap="quizDifficulty = d.value">
                   <text>{{ d.label }}</text>
                 </button>
               </view>
-              <Button block icon-left="sparkles" :loading="isGeneratingQuiz" @tap="generateQuiz">AI 自动出题</Button>
+              <Button block icon-left="sparkles" :loading="isGeneratingQuiz" @tap="generateQuiz">AI 自动出题（生成 20 题题库）</Button>
             </template>
             <template v-else>
               <input v-model="manualQuizTitle" class="input" placeholder="测验标题" />
@@ -442,6 +461,19 @@
                 @remove="onRemoveQuizDraft"
               />
             </scroll-view>
+            <view class="quiz-dispatch-settings">
+              <view class="segmented">
+                <button :class="{ active: randomQuizMode }" @tap="randomQuizMode = true">随机发题</button>
+                <button :class="{ active: !randomQuizMode }" @tap="randomQuizMode = false">统一发题</button>
+              </view>
+              <view v-if="randomQuizMode" class="option-row">
+                <text class="option-label">每人答题数：</text>
+                <button v-for="n in perStudentOptions" :key="n" class="option-card compact" :class="{ active: perStudentCount === n }" @tap="perStudentCount = n">
+                  <text>{{ n }} 题</text>
+                </button>
+              </view>
+              <text v-if="randomQuizMode" class="hint-text">题库 {{ quizDraft.length }} 题，每人随机抽 {{ perStudentCount }} 题</text>
+            </view>
             <Button block icon-left="send" @tap="pushQuizDraft">下发测验</Button>
           </view>
         </view>
@@ -838,8 +870,10 @@ const aiTopic = ref('')
 const aiPrompt = ref('')
 const startingAttendance = ref(false)
 const quizMode = ref<'ai' | 'manual'>('ai')
-const quizCount = ref(5)
+const quizCount = ref(20)
 const quizDifficulty = ref('medium')
+const perStudentCount = ref(5)
+const randomQuizMode = ref(true)
 const isGeneratingQuiz = ref(false)
 const isGeneratingCourseware = ref(false)
 const quizDraft = ref<QuizQuestion[]>([])
@@ -2395,7 +2429,7 @@ function generateQuiz() {
   isGeneratingQuiz.value = true
   emit(RoomEvent.AiQuizGen, {
     topic,
-    count: quizCount.value,
+    count: 20,
     types: ['single_choice', 'multiple_choice', 'true_false', 'short_answer'],
     difficulty: quizDifficulty.value,
     courseContext: store.courseName,
@@ -2423,19 +2457,31 @@ function generateQuiz() {
       },
     ])
     toast('已生成本地备用题目', 'success')
-  }, 6000)
+  }, 12000)
 }
+
+const perStudentOptions = computed(() => {
+  const pool = quizDraft.value.length
+  return [3, 5, 8, 10].filter(n => n <= pool)
+})
 
 function pushQuizDraft() {
   if (quizDraft.value.length === 0) return
+  const actualPerStudent = randomQuizMode.value
+    ? Math.min(perStudentCount.value, quizDraft.value.length)
+    : quizDraft.value.length
   emit(RoomEvent.QuizStart, {
     title: manualQuizTitle.value || quizTopic.value || '随堂测验',
     questions: quizDraft.value,
     timeLimit: 120,
+    randomMode: randomQuizMode.value,
+    perStudentCount: actualPerStudent,
   })
   store.activeQuiz = { taskId: 'pending', submitted: 0, total: store.totalCount, grading: false }
   closePanel()
-  toast('测验已下发', 'success')
+  toast(randomQuizMode.value
+    ? `测验已下发（题库 ${quizDraft.value.length} 题，每人随机 ${actualPerStudent} 题）`
+    : '测验已下发', 'success')
 }
 
 function sendBroadcast() {
@@ -2913,6 +2959,13 @@ function confirmEndLesson() {
 function truncate(text: string, max: number) {
   const s = String(text || '')
   return s.length > max ? `${s.slice(0, max)}…` : s
+}
+
+function studentQuestions(sub: any) {
+  const stats = quizReport.value?.questionStats || []
+  if (!quizReport.value?.randomMode || !sub.assignedQuestionIds) return stats
+  const ids = new Set(sub.assignedQuestionIds)
+  return stats.filter((qs: any) => ids.has(qs.question.id))
 }
 
 function stateText(state: StudentInfo['state']) {
@@ -3537,7 +3590,43 @@ function stateText(state: StudentInfo['state']) {
 }
 
 .quiz-preview-scroll {
-  height: calc(62vh - 240rpx);
+  height: calc(55vh - 280rpx);
+}
+
+.quiz-dispatch-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--color-surface-variant);
+  border-radius: var(--radius-lg);
+}
+.quiz-dispatch-settings .option-label {
+  font-size: var(--font-caption);
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.quiz-dispatch-settings .option-row {
+  align-items: center;
+}
+.hint-text {
+  font-size: 22rpx;
+  color: var(--color-text-tertiary);
+  text-align: center;
+}
+
+.random-mode-badge {
+  text-align: center;
+  padding: var(--space-1) var(--space-3);
+  background: #f0f7ff;
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-2);
+}
+.random-mode-badge text {
+  font-size: var(--font-caption);
+  color: #2f6bff;
+  font-weight: var(--font-weight-semibold);
 }
 
 .segmented {
@@ -3921,6 +4010,72 @@ function stateText(state: StudentInfo['state']) {
 .submission-row {
   justify-content: space-between;
   font-size: var(--font-label);
+}
+
+.student-detail-block {
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.student-detail-name {
+  font-weight: 600;
+}
+
+.per-q-row {
+  padding: var(--space-1) 0;
+  border-top: 1px solid var(--color-border, rgba(0,0,0,0.06));
+}
+
+.per-q-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-caption);
+}
+
+.per-q-idx {
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+  min-width: 40rpx;
+}
+
+.per-q-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-secondary);
+}
+
+.per-q-badge {
+  flex-shrink: 0;
+  font-size: 22rpx;
+  padding: 2rpx 12rpx;
+  border-radius: var(--radius-sm);
+}
+
+.badge-ok {
+  background: rgba(34,197,94,0.12);
+  color: #16a34a;
+}
+
+.badge-wrong {
+  background: rgba(239,68,68,0.12);
+  color: #dc2626;
+}
+
+.badge-miss {
+  background: rgba(156,163,175,0.12);
+  color: #6b7280;
+}
+
+.per-q-comment {
+  font-size: 22rpx;
+  color: var(--color-text-secondary);
+  padding: var(--space-1) 0 0 40rpx;
+  line-height: 1.4;
 }
 
 .attendance-list {

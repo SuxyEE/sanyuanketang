@@ -29,6 +29,7 @@ export const RoomEvent = {
   QuizProgress: 'quiz:progress',
   QuizGrading: 'quiz:grading',
   QuizReport: 'quiz:report',
+  QuizQuestions: 'quiz:questions',
   QuizSubmitAck: 'quiz:submit:ack',
   AnswerSubmit: 'answer:submit',
   AnswerSubmitted: 'answer:submitted',

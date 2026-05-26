@@ -82,6 +82,10 @@ interface ActiveQuiz {
   submissions: Map<string, StudentSubmission>
   expectedStudentIds: Set<string>
   generation: number
+  randomMode?: boolean
+  perStudentCount?: number
+  questionPool?: QuizQuestion[]
+  studentQuestionMap?: Map<string, string[]>
 }
 
 interface CompeteResponder {
@@ -790,11 +794,14 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       ? {
           taskId: room.activeQuiz.taskId,
           title: room.activeQuiz.title,
-          questions: room.activeQuiz.questions,
+          questions: room.activeQuiz.randomMode ? [] : room.activeQuiz.questions,
           timeLimit: room.activeQuiz.timeLimit,
           status: room.activeQuiz.status,
           submittedCount: room.activeQuiz.submissions.size,
           totalStudents: room.activeQuiz.expectedStudentIds.size,
+          randomMode: room.activeQuiz.randomMode || false,
+          poolSize: room.activeQuiz.randomMode ? room.activeQuiz.questions.length : undefined,
+          perStudentCount: room.activeQuiz.perStudentCount,
           remainingTime: room.activeQuiz.timeLimit
             ? Math.max(0, room.activeQuiz.timeLimit - Math.floor((Date.now() - new Date(room.activeQuiz.startedAt).getTime()) / 1000))
             : undefined,
@@ -851,6 +858,18 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
 
     if (room.slides.length > 0) {
       client.emit('slides:loaded', { slides: room.slides, total: room.slides.length })
+    }
+
+    if (
+      data.role === 'student' &&
+      room.activeQuiz?.status === 'in_progress' &&
+      room.activeQuiz.randomMode &&
+      room.activeQuiz.studentQuestionMap &&
+      !room.activeQuiz.studentQuestionMap.has(data.userId)
+    ) {
+      room.activeQuiz.expectedStudentIds.add(data.userId)
+      this.assignRandomQuestions(room.activeQuiz, data.userId, client.id)
+      this.logger.log(`Late student ${data.userName} auto-assigned ${room.activeQuiz.perStudentCount} random questions`)
     }
 
     this.broadcastMemberUpdate(roomId)
@@ -946,6 +965,11 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
         .map(m => m.userId),
     )
 
+    const isRandom = !!data.randomMode && questions.length > 1
+    const perStudent = isRandom
+      ? Math.max(1, Math.min(data.perStudentCount || 5, questions.length))
+      : questions.length
+
     room.activeQuiz = {
       taskId,
       title: data.title || '随堂测验',
@@ -956,6 +980,10 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       submissions: new Map(),
       expectedStudentIds,
       generation: ++this.quizGenCounter,
+      randomMode: isRandom,
+      perStudentCount: perStudent,
+      questionPool: isRandom ? questions : undefined,
+      studentQuestionMap: isRandom ? new Map() : undefined,
     }
     room.activeTaskId = taskId
     if (room.activeCompete?.active) {
@@ -978,17 +1006,59 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       room.aiPractice = null
     }
 
-    const task = {
-      ...data,
-      id: taskId,
-      questions,
-      type: 'quiz',
-      status: 'in_progress',
-      createdAt: room.activeQuiz.startedAt,
-      totalStudents: expectedStudentIds.size,
+    if (isRandom) {
+      const taskMeta = {
+        id: taskId,
+        title: data.title || '随堂测验',
+        type: 'quiz',
+        status: 'in_progress',
+        createdAt: room.activeQuiz.startedAt,
+        totalStudents: expectedStudentIds.size,
+        randomMode: true,
+        poolSize: questions.length,
+        perStudentCount: perStudent,
+        timeLimit: data.timeLimit,
+      }
+      this.emitToRoom(roomId, 'quiz:start', taskMeta)
+
+      for (const member of room.members.values()) {
+        if (member.role !== 'student') continue
+        this.assignRandomQuestions(room.activeQuiz, member.userId, member.socketId)
+      }
+    } else {
+      const task = {
+        ...data,
+        id: taskId,
+        questions,
+        type: 'quiz',
+        status: 'in_progress',
+        createdAt: room.activeQuiz.startedAt,
+        totalStudents: expectedStudentIds.size,
+      }
+      this.emitToRoom(roomId, 'quiz:start', task)
     }
-    this.emitToRoom(roomId, 'quiz:start', task)
-    this.logger.log(`Quiz started: ${data.title} (${questions.length} questions, ${expectedStudentIds.size} students)`)
+    this.logger.log(`Quiz started: ${data.title} (pool=${questions.length}, perStudent=${perStudent}, random=${isRandom}, students=${expectedStudentIds.size})`)
+  }
+
+  /** Fisher-Yates shuffle 抽取 N 题并单独推送给学生 */
+  private assignRandomQuestions(quiz: ActiveQuiz, studentId: string, socketId: string) {
+    if (!quiz.questionPool || !quiz.studentQuestionMap) return
+    const pool = [...quiz.questionPool]
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]]
+    }
+    const count = quiz.perStudentCount || pool.length
+    const selected = pool.slice(0, count)
+    const ids = selected.map(q => q.id)
+    quiz.studentQuestionMap.set(studentId, ids)
+
+    this.server.to(socketId).emit('quiz:questions', {
+      taskId: quiz.taskId,
+      questions: selected,
+      poolSize: quiz.questionPool.length,
+      perStudentCount: count,
+    })
   }
 
   @SubscribeMessage('quiz:stop')
@@ -1059,7 +1129,14 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
     let totalEarned = 0
     let totalPoints = 0
 
-    for (const q of quiz.questions) {
+    const assignedIds = quiz.randomMode && quiz.studentQuestionMap
+      ? new Set(quiz.studentQuestionMap.get(submission.studentId))
+      : null
+    const questionsToGrade = assignedIds
+      ? quiz.questions.filter(q => assignedIds.has(q.id))
+      : quiz.questions
+
+    for (const q of questionsToGrade) {
       const studentAnswer = submission.answers[q.id] || ''
       const isObjective = q.type === 'single_choice' || q.type === 'multiple_choice' || q.type === 'true_false'
       const pts = q.points ?? 10
@@ -1073,7 +1150,6 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
         totalEarned += earned
         totalPoints += pts
       } else {
-        // short_answer scoring happens later in completeQuiz; only contribute its points to the denominator
         totalPoints += pts
       }
     }
@@ -1106,11 +1182,18 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
     const gradingPromises: Array<Promise<void>> = []
 
     for (const submission of quiz.submissions.values()) {
-      for (const q of shortAnswerQuestions) {
+      const assignedIds = quiz.randomMode && quiz.studentQuestionMap
+        ? new Set(quiz.studentQuestionMap.get(submission.studentId))
+        : null
+      const shortQs = assignedIds
+        ? shortAnswerQuestions.filter(q => assignedIds.has(q.id))
+        : shortAnswerQuestions
+
+      for (const q of shortQs) {
         const studentAnswer = submission.answers[q.id] || ''
         if (!studentAnswer.trim()) {
           submission.perQuestion = submission.perQuestion || {}
-          submission.perQuestion[q.id] = { score: 0, comment: '未作答', aiGraded: true }
+          submission.perQuestion[q.id] = { score: 0, correct: false, comment: '未作答', aiGraded: true }
           continue
         }
         const pts = q.points ?? 10
@@ -1126,6 +1209,7 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
             const safeScore = Math.max(0, Math.min(100, Math.round(Number(result.score) || 0)))
             submission.perQuestion[q.id] = {
               score: safeScore,
+              correct: safeScore >= 60,
               earned: Math.round((safeScore / 100) * pts),
               points: pts,
               comment: result.comment,
@@ -1135,6 +1219,7 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
             submission.perQuestion = submission.perQuestion || {}
             submission.perQuestion[q.id] = {
               score: 60,
+              correct: true,
               earned: Math.round((60 / 100) * pts),
               points: pts,
               comment: 'AI 批改失败，已给基础分',
@@ -1159,12 +1244,18 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
     for (const submission of quiz.submissions.values()) {
       let totalEarned = 0
       let totalPoints = 0
-      for (const q of quiz.questions) {
+      const assignedIds = quiz.randomMode && quiz.studentQuestionMap
+        ? new Set(quiz.studentQuestionMap.get(submission.studentId))
+        : null
+      const gradedQuestions = assignedIds
+        ? quiz.questions.filter(q => assignedIds.has(q.id))
+        : quiz.questions
+
+      for (const q of gradedQuestions) {
         const pts = q.points ?? 10
         totalPoints += pts
         const pq = submission.perQuestion?.[q.id]
         if (pq) {
-          // For records lacking earned (e.g. unanswered short_answer), derive from score
           const earned = pq.earned != null ? pq.earned : Math.round((pq.score / 100) * pts)
           totalEarned += earned
           if (pq.points == null) pq.points = pts
@@ -1219,8 +1310,14 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       let correctCount = 0
       let totalScoreSum = 0
       let scoredCount = 0
+      let assignedCount = 0
 
       for (const sub of submissions) {
+        if (quiz.randomMode && quiz.studentQuestionMap) {
+          const assigned = quiz.studentQuestionMap.get(sub.studentId)
+          if (assigned && !assigned.includes(q.id)) continue
+        }
+        assignedCount++
         const ans = sub.answers[q.id] || ''
         const pq = sub.perQuestion?.[q.id]
         if (ans && !isShort) {
@@ -1250,15 +1347,17 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
         })
       }
 
+      const denominator = quiz.randomMode ? assignedCount : submissions.length
       return {
         question: q,
         answerCount,
         correctCount,
-        correctRate: submissions.length > 0 ? Math.round((correctCount / submissions.length) * 100) : 0,
+        correctRate: denominator > 0 ? Math.round((correctCount / denominator) * 100) : 0,
         avgScore: scoredCount > 0 ? Math.round(totalScoreSum / scoredCount) : 0,
         answers,
+        assignedCount: quiz.randomMode ? assignedCount : undefined,
       }
-    })
+    }).filter(qs => !quiz.randomMode || (qs.assignedCount != null && qs.assignedCount > 0))
 
     // 知识点掌握度聚合：把每道题的（正确率 或 AI 评分）按权重平均到它绑定的知识点
     // 设计思路：客观题用 correctRate（0-100），主观题用 avgScore（0-100），未绑定知识点的题忽略
@@ -1302,12 +1401,18 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       questions: quiz.questions,
       questionStats,
       knowledgeMastery,
+      randomMode: quiz.randomMode || false,
+      poolSize: quiz.randomMode ? quiz.questions.length : undefined,
+      perStudentCount: quiz.randomMode ? quiz.perStudentCount : undefined,
       submissions: submissions.map(s => ({
         studentId: s.studentId,
         studentName: s.studentName,
         score: s.score,
         submittedAt: s.submittedAt,
         perQuestion: s.perQuestion,
+        assignedQuestionIds: quiz.randomMode && quiz.studentQuestionMap
+          ? quiz.studentQuestionMap.get(s.studentId)
+          : undefined,
       })),
     }
   }
