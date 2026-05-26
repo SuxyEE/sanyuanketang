@@ -11,20 +11,24 @@
       <view v-if="step === 'photo'" class="photo-stage">
         <view class="camera-box">
           <!-- #ifdef APP-PLUS || MP-WEIXIN -->
-          <!-- 仅在权限就绪且未拍照时挂载 <camera>，避免被拒权后留个无反馈黑框 -->
+          <!-- 仅在权限就绪且 camera 组件可用且未拍照时挂载 <camera> -->
           <camera
-            v-if="appCamReady && !photoPath"
+            v-if="hasCameraComponent && appCamReady && !photoPath"
             class="camera"
             device-position="front"
             flash="off"
             mode="normal"
             @error="onCameraError"
           />
-          <cover-view v-if="appCamReady && !photoPath" class="face-mask">
+          <cover-view v-if="hasCameraComponent && appCamReady && !photoPath" class="face-mask">
             <cover-view class="face-oval"></cover-view>
             <cover-view class="mask-tip">请将脸部置于框内，保持正面清晰</cover-view>
           </cover-view>
-          <view v-if="!appCamReady && !photoPath" class="camera-fallback">
+          <view v-if="!hasCameraComponent && !photoPath" class="camera-fallback">
+            <Icon name="user" size="3xl" tone="muted" />
+            <text>点击下方按钮调用系统相机拍照</text>
+          </view>
+          <view v-else-if="!appCamReady && !photoPath" class="camera-fallback">
             <Icon :name="appCamError ? 'alert-circle' : 'user'" size="3xl" :tone="appCamError ? 'warning' : 'muted'" />
             <text>{{ appCamError || '正在申请摄像头权限…' }}</text>
             <Button v-if="appCamError" variant="secondary" size="sm" icon-left="refresh-cw" @tap="initAppCamera">重试授权</Button>
@@ -169,6 +173,7 @@ let pulseTimer: ReturnType<typeof setTimeout> | null = null
 // 否则首次没权限时只看到一块无反馈黑框，用户根本不知道要去系统设置开权限。
 const appCamReady = ref(false)
 const appCamError = ref('')
+const hasCameraComponent = typeof uni.createCameraContext === 'function'
 
 // H5 模式专用：用 getUserMedia 拉前置摄像头实时画面
 const h5VideoHostId = `signin-h5-cam-${Math.random().toString(36).slice(2, 8)}`
@@ -218,6 +223,7 @@ function onCameraError(err: any) {
 // 主动申请摄像头权限。<camera> 组件自身不会显式向用户解释为什么需要权限，
 // 首次拒绝后会留个无任何提示的黑框；改成先 authorize → 通过再挂 <camera>。
 function initAppCamera() {
+  if (!hasCameraComponent) return
   appCamError.value = ''
   appCamReady.value = false
   cameraBroken.value = false
@@ -242,8 +248,7 @@ function takePhoto() {
   takingPhoto.value = true
 
   // #ifdef APP-PLUS || MP-WEIXIN
-  // 没拿到权限 / camera 组件未挂载时，直接走系统相机选图，避免 createCameraContext 拿到空上下文
-  if (appCamReady.value && !cameraBroken.value) {
+  if (hasCameraComponent && appCamReady.value && !cameraBroken.value) {
     const ctx = uni.createCameraContext()
     ctx.takePhoto({
       quality: 'normal',

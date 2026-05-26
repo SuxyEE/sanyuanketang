@@ -869,10 +869,43 @@ function onSignIn(payload: {
   verified: boolean
 }) {
   const s = getSocket()
-  s?.emit(RoomEvent.AttendanceSign, payload)
-  store.attendanceSigned = true
-  store.showAttendance = false
-  showToast('签到成功', 'success')
+  if (!s || !store.isOnline) {
+    showToast('网络未连接，签到失败', 'error', 3000)
+    return
+  }
+
+  const ackHandler = (data: any) => {
+    clearTimeout(timer)
+    s.off(RoomEvent.AttendanceSignedAck, ackHandler)
+    if (data?.error) {
+      showToast(data.error, 'error', 3000)
+    } else if (data?.duplicate) {
+      store.attendanceSigned = true
+      store.showAttendance = false
+      showToast('你已签到过', 'info')
+    }
+  }
+  const signedHandler = (data: any) => {
+    if (data?.studentId === store.studentId) {
+      clearTimeout(timer)
+      s.off(RoomEvent.AttendanceSignedAck, ackHandler)
+      s.off(RoomEvent.AttendanceSigned, signedHandler)
+      store.attendanceSigned = true
+      store.showAttendance = false
+      showToast('签到成功', 'success')
+    }
+  }
+  s.on(RoomEvent.AttendanceSignedAck, ackHandler)
+  s.on(RoomEvent.AttendanceSigned, signedHandler)
+  s.emit(RoomEvent.AttendanceSign, payload)
+
+  const timer = setTimeout(() => {
+    s.off(RoomEvent.AttendanceSignedAck, ackHandler)
+    s.off(RoomEvent.AttendanceSigned, signedHandler)
+    store.attendanceSigned = true
+    store.showAttendance = false
+    showToast('签到已提交（未收到确认）', 'info')
+  }, 5000)
 }
 
 function openAiInteractive() {

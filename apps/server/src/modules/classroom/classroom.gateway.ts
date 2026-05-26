@@ -129,6 +129,7 @@ interface ActiveAttendance {
     latitude: number
     longitude: number
   }
+  autoEndTimer?: ReturnType<typeof setTimeout>
 }
 
 interface AnnotationPoint {
@@ -964,6 +965,10 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       setTimeout(() => { if (room.activeCompete === stale && !stale.active) room.activeCompete = null }, 4000)
     }
     if (room.activeAttendance?.active) {
+      if (room.activeAttendance.autoEndTimer) {
+        clearTimeout(room.activeAttendance.autoEndTimer)
+        room.activeAttendance.autoEndTimer = undefined
+      }
       room.activeAttendance.active = false
       const stale = room.activeAttendance
       this.emitToRoom(roomId, 'attendance:end')
@@ -1498,14 +1503,19 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       radius: data.radius || 50,
       teacherLocation: data.teacherLocation,
     }
-    this.emitToRoom(ctx.roomId, 'attendance:start', {
+    const roomId = ctx.roomId
+    const att = ctx.room.activeAttendance
+    this.emitToRoom(roomId, 'attendance:start', {
       ...data,
-      requirePhoto: ctx.room.activeAttendance.requirePhoto,
-      requireLocation: ctx.room.activeAttendance.requireLocation,
-      radius: ctx.room.activeAttendance.radius,
-      teacherLocation: ctx.room.activeAttendance.teacherLocation,
-      startedAt: ctx.room.activeAttendance.startedAt,
+      requirePhoto: att.requirePhoto,
+      requireLocation: att.requireLocation,
+      radius: att.radius,
+      teacherLocation: att.teacherLocation,
+      startedAt: att.startedAt,
     })
+    att.autoEndTimer = setTimeout(() => {
+      this.autoEndAttendance(roomId)
+    }, data.duration * 60 * 1000)
     this.logger.log(`Attendance started: ${data.mode}, ${data.duration}min`)
   }
 
@@ -1589,6 +1599,10 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       responderIds: new Set<string>(),
     }
     if (room.activeAttendance?.active) {
+      if (room.activeAttendance.autoEndTimer) {
+        clearTimeout(room.activeAttendance.autoEndTimer)
+        room.activeAttendance.autoEndTimer = undefined
+      }
       room.activeAttendance.active = false
       const stale = room.activeAttendance
       this.emitToRoom(roomId, 'attendance:end')
@@ -1940,13 +1954,36 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
     this.logger.log(`Homework published: ${homework.title} (${homework.questions.length} questions)`)
   }
 
+  private autoEndAttendance(roomId: string) {
+    const room = this.rooms.get(roomId)
+    if (!room || !room.activeAttendance?.active) return
+    const att = room.activeAttendance
+    if (att.autoEndTimer) { clearTimeout(att.autoEndTimer); att.autoEndTimer = undefined }
+    att.active = false
+    room.reportData.attendanceHistory.push({
+      mode: att.mode || '',
+      startedAt: att.startedAt || Date.now(),
+      endedAt: Date.now(),
+      signed: [...att.signed],
+    })
+    const cur = att
+    setTimeout(() => {
+      if (room.activeAttendance === cur && !cur.active) room.activeAttendance = null
+    }, 6000)
+    this.emitToRoom(roomId, 'attendance:end')
+    this.logger.log(`Attendance auto-ended in ${roomId}`)
+  }
+
   @SubscribeMessage('attendance:end')
   handleAttendanceEnd(@ConnectedSocket() client: Socket) {
     const ctx = this.getTeacher(client)
     if (!ctx) return
     if (ctx.room.activeAttendance) {
+      if (ctx.room.activeAttendance.autoEndTimer) {
+        clearTimeout(ctx.room.activeAttendance.autoEndTimer)
+        ctx.room.activeAttendance.autoEndTimer = undefined
+      }
       ctx.room.activeAttendance.active = false
-      // 归档签到记录到 reportData，避免 6 秒后被清空、报告读不到
       ctx.room.reportData.attendanceHistory.push({
         mode: (ctx.room.activeAttendance as any).mode || '',
         startedAt: (ctx.room.activeAttendance as any).startedAt || Date.now(),
