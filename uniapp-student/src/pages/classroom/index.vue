@@ -199,6 +199,14 @@
               {{ store.totalSlides > 0 ? '课件加载中…' : '等待教师导入课件…' }}
             </text>
           </view>
+          <button
+            v-if="store.groupData"
+            class="discussion-fab"
+            @tap="store.viewState = 'discussion'"
+          >
+            <Icon name="users" size="sm" />
+            <text>返回讨论</text>
+          </button>
         </view>
 
         <!-- quiz -->
@@ -294,6 +302,7 @@
             :group="store.groupData"
             :student-id="store.studentId"
             :student-name="store.studentName"
+            @back="store.viewState = 'listening'"
           />
           <view v-else class="empty-state">
             <view class="empty-icon"><Icon name="hourglass" size="2xl" tone="muted" /></view>
@@ -1024,11 +1033,18 @@ onMounted(() => {
     store.totalSlides = data.totalSlides || 0
     if (data.lessonMeta) applyLessonStart({ ...data.lessonMeta, resetState: false })
     if (data.isLocked) store.lockScreen()
-    if (data.activeQuiz?.taskId) store.setQuiz({
-      id: data.activeQuiz.taskId,
-      questions: data.activeQuiz.questions || [],
-      timeLimit: data.activeQuiz.timeLimit,
-    })
+    if (data.activeQuiz?.taskId) {
+      if (data.activeQuiz.randomMode) {
+        store.activeTaskId = data.activeQuiz.taskId
+        store.quizTimeLimit = data.activeQuiz.timeLimit || 300
+      } else {
+        store.setQuiz({
+          id: data.activeQuiz.taskId,
+          questions: data.activeQuiz.questions || [],
+          timeLimit: data.activeQuiz.timeLimit,
+        })
+      }
+    }
     if (data.aiPractice?.topic) {
       aiPracticeTopic.value = data.aiPractice.topic
       store.viewState = 'ai_practice'
@@ -1062,8 +1078,22 @@ onMounted(() => {
   s.on(RoomEvent.AnnotationUndo, studentAnnoApplyUndo)
 
   s.on(RoomEvent.QuizStart, (task: any) => {
-    store.setQuiz(task)
+    if (task.randomMode) {
+      store.activeTaskId = task.id || task.taskId || ''
+      store.quizTimeLimit = task.timeLimit || 300
+    } else {
+      store.setQuiz(task)
+    }
     hasCompeted.value = false
+  })
+  s.on(RoomEvent.QuizQuestions, (data: any) => {
+    if (data.questions && data.questions.length > 0) {
+      store.setQuiz({
+        id: data.taskId || store.activeTaskId,
+        questions: data.questions,
+        timeLimit: store.quizTimeLimit,
+      })
+    }
   })
   s.on(RoomEvent.QuizStop, () => {
     showToast('测验已结束，等待老师批阅', 'info')
@@ -1217,6 +1247,7 @@ onUnmounted(() => {
     RoomEvent.AnnotationClear,
     RoomEvent.AnnotationUndo,
     RoomEvent.QuizStart,
+    RoomEvent.QuizQuestions,
     RoomEvent.QuizStop,
     RoomEvent.QuizReport,
     RoomEvent.ScreenLock,
@@ -1918,6 +1949,25 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
+}
+
+.discussion-fab {
+  position: absolute;
+  bottom: var(--space-4);
+  right: var(--space-4);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-primary);
+  color: var(--color-text-on-color);
+  border: none;
+  border-radius: var(--radius-pill);
+  box-shadow: var(--elevation-2);
+  font-size: var(--font-caption);
+  font-weight: var(--font-weight-semibold);
+  z-index: 10;
 }
 
 .slide-image-wrap {

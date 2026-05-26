@@ -284,6 +284,9 @@
           </button>
         </view>
         <scroll-view class="report-body" scroll-y>
+          <view v-if="quizReport.randomMode" class="random-mode-badge">
+            <text>随机发题 · 题库 {{ quizReport.poolSize }} 题 · 每人 {{ quizReport.perStudentCount }} 题</text>
+          </view>
           <view class="review-summary">
             <view class="summary-stat">
               <text class="s-num">{{ quizReport.avgScore }}</text>
@@ -338,14 +341,35 @@
           </view>
 
           <view v-if="quizReport.submissions && quizReport.submissions.length > 0" class="report-block">
-            <text class="section-label neutral">学生分数（{{ quizReport.submissions.length }}）</text>
+            <text class="section-label neutral">学生答题详情（{{ quizReport.submissions.length }}）</text>
             <view
               v-for="sub in quizReport.submissions"
               :key="sub.studentId"
-              class="submission-row"
+              class="student-detail-block"
             >
-              <text>{{ sub.studentName }}</text>
-              <text :class="(sub.score || 0) >= 80 ? 'ok-text' : 'muted-text'">{{ sub.score || 0 }} 分</text>
+              <view class="submission-row">
+                <text class="student-detail-name">{{ sub.studentName }}</text>
+                <text :class="(sub.score || 0) >= 80 ? 'ok-text' : 'muted-text'">{{ sub.score || 0 }} 分</text>
+              </view>
+              <view
+                v-for="(qs, idx) in studentQuestions(sub)"
+                :key="qs.question.id"
+                class="per-q-row"
+              >
+                <view class="per-q-head">
+                  <text class="per-q-idx">{{ idx + 1 }}.</text>
+                  <text class="per-q-title">{{ truncate(qs.question.content, 20) }}</text>
+                  <text
+                    v-if="sub.perQuestion && sub.perQuestion[qs.question.id]"
+                    class="per-q-badge"
+                    :class="sub.perQuestion[qs.question.id].correct ? 'badge-ok' : 'badge-wrong'"
+                  >{{ sub.perQuestion[qs.question.id].correct ? '✓' : '✗' }} {{ sub.perQuestion[qs.question.id].earned ?? sub.perQuestion[qs.question.id].score ?? 0 }}/{{ sub.perQuestion[qs.question.id].points ?? qs.question.points ?? 10 }}</text>
+                  <text v-else class="per-q-badge badge-miss">未作答</text>
+                </view>
+                <view v-if="sub.perQuestion && sub.perQuestion[qs.question.id]?.comment" class="per-q-comment">
+                  <text>{{ sub.perQuestion[qs.question.id].comment }}</text>
+                </view>
+              </view>
             </view>
           </view>
         </scroll-view>
@@ -402,43 +426,56 @@
           <Button block icon-left="send" @tap="sendBroadcast">发送广播</Button>
         </view>
 
-        <view v-else-if="activePanel === 'quiz'" class="form">
-          <view class="segmented">
-            <button :class="{ active: quizMode === 'ai' }" @tap="quizMode = 'ai'">AI 生成</button>
-            <button :class="{ active: quizMode === 'manual' }" @tap="quizMode = 'manual'">手动出题</button>
-          </view>
-          <template v-if="quizMode === 'ai'">
-            <input v-model="quizTopic" class="input" placeholder="知识点，例如：机械臂坐标系" />
-            <view class="option-row">
-              <button v-for="n in [3, 5, 8, 10]" :key="n" class="option-card compact" :class="{ active: quizCount === n }" @tap="quizCount = n">
-                <text>{{ n }} 题</text>
-              </button>
-            </view>
-            <view class="option-row">
-              <button v-for="d in difficultyOptions" :key="d.value" class="option-card compact" :class="{ active: quizDifficulty === d.value }" @tap="quizDifficulty = d.value">
-                <text>{{ d.label }}</text>
-              </button>
-            </view>
-            <Button block icon-left="sparkles" :loading="isGeneratingQuiz" @tap="generateQuiz">AI 自动出题</Button>
-          </template>
-          <template v-else>
-            <input v-model="manualQuizTitle" class="input" placeholder="测验标题" />
+        <view v-else-if="activePanel === 'quiz'" class="form" :class="{ 'quiz-two-col': quizDraft.length > 0 }">
+          <view class="quiz-left">
             <view class="segmented">
-              <button v-for="type in questionTypes" :key="type.value" :class="{ active: manualQuestionType === type.value }" @tap="manualQuestionType = type.value">{{ type.label }}</button>
+              <button :class="{ active: quizMode === 'ai' }" @tap="quizMode = 'ai'">AI 生成</button>
+              <button :class="{ active: quizMode === 'manual' }" @tap="quizMode = 'manual'">手动出题</button>
             </view>
-            <textarea v-model="manualQuestionStem" class="textarea" placeholder="题目内容" />
-            <textarea v-if="manualQuestionType !== 'short_answer' && manualQuestionType !== 'true_false'" v-model="manualQuestionOptions" class="textarea small" placeholder="每行一个选项，例如：&#10;A. 伺服电机&#10;B. 步进电机" />
-            <input v-model="manualQuestionAnswer" class="input" :placeholder="manualQuestionType === 'short_answer' ? '参考答案' : '正确答案，例如 A 或 对'" />
-            <Button variant="secondary" block icon-left="plus" @tap="addManualQuestion">添加题目</Button>
-          </template>
-          <QuestionPreviewList
-            v-if="quizDraft.length > 0"
-            :questions="quizDraft"
-            title="题目预览"
-            :removable="true"
-            @remove="onRemoveQuizDraft"
-          />
-          <Button block icon-left="send" :disabled="quizDraft.length === 0" @tap="pushQuizDraft">下发测验</Button>
+            <template v-if="quizMode === 'ai'">
+              <input v-model="quizTopic" class="input" placeholder="知识点，例如：机械臂坐标系" />
+              <view class="option-row">
+                <button v-for="d in difficultyOptions" :key="d.value" class="option-card compact" :class="{ active: quizDifficulty === d.value }" @tap="quizDifficulty = d.value">
+                  <text>{{ d.label }}</text>
+                </button>
+              </view>
+              <Button block icon-left="sparkles" :loading="isGeneratingQuiz" @tap="generateQuiz">AI 自动出题（生成 20 题题库）</Button>
+            </template>
+            <template v-else>
+              <input v-model="manualQuizTitle" class="input" placeholder="测验标题" />
+              <view class="segmented">
+                <button v-for="type in questionTypes" :key="type.value" :class="{ active: manualQuestionType === type.value }" @tap="manualQuestionType = type.value">{{ type.label }}</button>
+              </view>
+              <textarea v-model="manualQuestionStem" class="textarea" placeholder="题目内容" />
+              <textarea v-if="manualQuestionType !== 'short_answer' && manualQuestionType !== 'true_false'" v-model="manualQuestionOptions" class="textarea small" placeholder="每行一个选项，例如：&#10;A. 伺服电机&#10;B. 步进电机" />
+              <input v-model="manualQuestionAnswer" class="input" :placeholder="manualQuestionType === 'short_answer' ? '参考答案' : '正确答案，例如 A 或 对'" />
+              <Button variant="secondary" block icon-left="plus" @tap="addManualQuestion">添加题目</Button>
+            </template>
+          </view>
+          <view v-if="quizDraft.length > 0" class="quiz-right">
+            <scroll-view class="quiz-preview-scroll" scroll-y>
+              <QuestionPreviewList
+                :questions="quizDraft"
+                title="题目预览"
+                :removable="true"
+                @remove="onRemoveQuizDraft"
+              />
+            </scroll-view>
+            <view class="quiz-dispatch-settings">
+              <view class="segmented">
+                <button :class="{ active: randomQuizMode }" @tap="randomQuizMode = true">随机发题</button>
+                <button :class="{ active: !randomQuizMode }" @tap="randomQuizMode = false">统一发题</button>
+              </view>
+              <view v-if="randomQuizMode" class="option-row">
+                <text class="option-label">每人答题数：</text>
+                <button v-for="n in perStudentOptions" :key="n" class="option-card compact" :class="{ active: perStudentCount === n }" @tap="perStudentCount = n">
+                  <text>{{ n }} 题</text>
+                </button>
+              </view>
+              <text v-if="randomQuizMode" class="hint-text">题库 {{ quizDraft.length }} 题，每人随机抽 {{ perStudentCount }} 题</text>
+            </view>
+            <Button block icon-left="send" @tap="pushQuizDraft">下发测验</Button>
+          </view>
         </view>
 
         <view v-else-if="activePanel === 'attendance'" class="form">
@@ -502,9 +539,6 @@
         </view>
 
         <view v-else-if="activePanel === 'discuss'" class="form">
-          <view v-if="store.activeDiscussion" class="hint-box">
-            <text>当前正在进行讨论：{{ store.activeDiscussion.topic || '（未设主题）' }}</text>
-          </view>
           <template v-if="!store.activeDiscussion">
             <view class="option-row">
               <button v-for="strategy in groupStrategies" :key="strategy.value" class="option-card" :class="{ active: groupStrategy === strategy.value }" @tap="groupStrategy = strategy.value">
@@ -523,15 +557,47 @@
                 <text>{{ m }} 分钟</text>
               </button>
             </view>
+            <Button block icon-left="users" @tap="startGroupDiscussion">开始分组讨论</Button>
           </template>
-          <Button
-            v-if="store.activeDiscussion"
-            variant="danger"
-            block
-            icon-left="stop-circle"
-            @tap="endGroupDiscussion"
-          >结束分组讨论</Button>
-          <Button v-else block icon-left="users" @tap="startGroupDiscussion">开始分组讨论</Button>
+          <template v-else>
+            <view class="hint-box">
+              <text>讨论中：{{ store.activeDiscussion.topic || '（未设主题）' }} · {{ store.discussionGroups.length }} 组</text>
+            </view>
+            <view class="group-tabs">
+              <button
+                v-for="g in store.discussionGroups"
+                :key="g.id"
+                class="group-tab"
+                :class="{ active: viewingGroupId === g.id }"
+                @tap="viewingGroupId = g.id"
+              >
+                <text>{{ g.name }}</text>
+                <text class="group-tab-count">{{ g.members.length }}人</text>
+                <view v-if="groupUnread(g.id)" class="group-tab-dot"></view>
+              </button>
+            </view>
+            <view v-if="viewingGroupId" class="group-chat-box">
+              <view class="group-members-bar">
+                <text v-for="m in viewingGroup?.members" :key="m.id" class="group-member-tag">{{ m.name }}</text>
+              </view>
+              <scroll-view scroll-y class="group-chat-scroll" :scroll-top="groupScrollTop">
+                <view v-if="viewingMessages.length === 0" class="group-chat-empty">
+                  <text>暂无消息</text>
+                </view>
+                <view v-for="(msg, idx) in viewingMessages" :key="idx" class="group-chat-msg" :class="{ 'ai-msg': msg.studentId === '__ai__' }">
+                  <text class="group-chat-author" :class="{ 'ai-author': msg.studentId === '__ai__' }">{{ msg.studentName }}</text>
+                  <text class="group-chat-text">{{ msg.text }}</text>
+                  <text class="group-chat-time">{{ formatMsgTime(msg.time) }}</text>
+                </view>
+              </scroll-view>
+            </view>
+            <Button
+              variant="danger"
+              block
+              icon-left="stop-circle"
+              @tap="endGroupDiscussion"
+            >结束分组讨论</Button>
+          </template>
         </view>
 
         <view v-else-if="activePanel === 'ai'" class="form">
@@ -833,8 +899,10 @@ const aiTopic = ref('')
 const aiPrompt = ref('')
 const startingAttendance = ref(false)
 const quizMode = ref<'ai' | 'manual'>('ai')
-const quizCount = ref(5)
+const quizCount = ref(20)
 const quizDifficulty = ref('medium')
+const perStudentCount = ref(5)
+const randomQuizMode = ref(true)
 const isGeneratingQuiz = ref(false)
 const isGeneratingCourseware = ref(false)
 const quizDraft = ref<QuizQuestion[]>([])
@@ -847,6 +915,7 @@ const groupStrategy = ref('random')
 const groupCount = ref(2)
 const groupTopic = ref('')
 const groupDuration = ref(10)
+const viewingGroupId = ref('')
 const whiteboardTopic = ref('')
 const whiteboardHint = ref('')
 const isGeneratingWhiteboard = ref(false)
@@ -1516,21 +1585,42 @@ const socketHandlers = {
     if (activeActivity.value === 'ai') activeActivity.value = ''
     store.activeAiPractice = null
   },
-  onGroupCreate: (data: { groups?: any[]; topic?: string; duration?: number; strategy?: string }) => {
-    if (data?.groups && data.groups.length > 0) {
+  onGroupCreate: (data: any) => {
+    const groups = Array.isArray(data) ? data : data?.groups
+    if (groups && groups.length > 0) {
       activeActivity.value = 'discuss'
-      store.activeDiscussion = {
-        topic: data.topic || '',
-        duration: data.duration || 0,
-        startedAt: Date.now(),
-        strategy: data.strategy || 'random',
-        groupCount: data.groups.length,
+      if (!store.activeDiscussion) {
+        store.activeDiscussion = {
+          topic: '',
+          duration: 0,
+          startedAt: Date.now(),
+          strategy: 'random',
+          groupCount: groups.length,
+        }
+      } else {
+        store.activeDiscussion.groupCount = groups.length
+      }
+      store.discussionGroups = groups
+      store.groupMessages = new Map()
+      if (!viewingGroupId.value) {
+        viewingGroupId.value = groups[0].id
       }
     }
   },
   onGroupDissolve: () => {
     if (activeActivity.value === 'discuss') activeActivity.value = ''
     store.activeDiscussion = null
+    store.discussionGroups = []
+    store.groupMessages = new Map()
+    viewingGroupId.value = ''
+  },
+  onGroupMsg: (data: { groupId: string; studentId: string; studentName: string; text: string; time: string }) => {
+    if (!data?.groupId) return
+    const msgs = store.groupMessages.get(data.groupId) || []
+    msgs.push({ studentId: data.studentId, studentName: data.studentName, text: data.text, time: data.time })
+    if (msgs.length > 200) msgs.splice(0, 50)
+    store.groupMessages.set(data.groupId, msgs)
+    store.groupMessages = new Map(store.groupMessages)
   },
   onWhiteboardGen: (result: any) => {
     isGeneratingWhiteboard.value = false
@@ -1610,6 +1700,7 @@ onMounted(() => {
   s.on(RoomEvent.AiPracticeEnd, socketHandlers.onAiPracticeEnd)
   s.on(RoomEvent.GroupCreate, socketHandlers.onGroupCreate)
   s.on(RoomEvent.GroupDissolve, socketHandlers.onGroupDissolve)
+  s.on(RoomEvent.GroupMsg, socketHandlers.onGroupMsg)
   s.on(RoomEvent.AiWhiteboardGen, socketHandlers.onWhiteboardGen)
   s.on(RoomEvent.AiWhiteboardGenProgress, socketHandlers.onWhiteboardGenProgress)
   s.on(RoomEvent.AiInteractiveGen, socketHandlers.onInteractiveGen)
@@ -1661,6 +1752,7 @@ onUnmounted(() => {
   s.off(RoomEvent.AiPracticeEnd, socketHandlers.onAiPracticeEnd)
   s.off(RoomEvent.GroupCreate, socketHandlers.onGroupCreate)
   s.off(RoomEvent.GroupDissolve, socketHandlers.onGroupDissolve)
+  s.off(RoomEvent.GroupMsg, socketHandlers.onGroupMsg)
   s.off(RoomEvent.AiWhiteboardGen, socketHandlers.onWhiteboardGen)
   s.off(RoomEvent.AiWhiteboardGenProgress, socketHandlers.onWhiteboardGenProgress)
   s.off(RoomEvent.AiInteractiveGen, socketHandlers.onInteractiveGen)
@@ -2390,7 +2482,7 @@ function generateQuiz() {
   isGeneratingQuiz.value = true
   emit(RoomEvent.AiQuizGen, {
     topic,
-    count: quizCount.value,
+    count: 20,
     types: ['single_choice', 'multiple_choice', 'true_false', 'short_answer'],
     difficulty: quizDifficulty.value,
     courseContext: store.courseName,
@@ -2418,19 +2510,31 @@ function generateQuiz() {
       },
     ])
     toast('已生成本地备用题目', 'success')
-  }, 6000)
+  }, 12000)
 }
+
+const perStudentOptions = computed(() => {
+  const pool = quizDraft.value.length
+  return [3, 5, 8, 10].filter(n => n <= pool)
+})
 
 function pushQuizDraft() {
   if (quizDraft.value.length === 0) return
+  const actualPerStudent = randomQuizMode.value
+    ? Math.min(perStudentCount.value, quizDraft.value.length)
+    : quizDraft.value.length
   emit(RoomEvent.QuizStart, {
     title: manualQuizTitle.value || quizTopic.value || '随堂测验',
     questions: quizDraft.value,
     timeLimit: 120,
+    randomMode: randomQuizMode.value,
+    perStudentCount: actualPerStudent,
   })
   store.activeQuiz = { taskId: 'pending', submitted: 0, total: store.totalCount, grading: false }
   closePanel()
-  toast('测验已下发', 'success')
+  toast(randomQuizMode.value
+    ? `测验已下发（题库 ${quizDraft.value.length} 题，每人随机 ${actualPerStudent} 题）`
+    : '测验已下发', 'success')
 }
 
 function sendBroadcast() {
@@ -2540,7 +2644,32 @@ function endGroupDiscussion() {
   if (!store.activeDiscussion) return
   emit(RoomEvent.GroupDissolve, {})
   store.activeDiscussion = null
+  store.discussionGroups = []
+  store.groupMessages = new Map()
+  viewingGroupId.value = ''
   toast('已结束分组讨论')
+}
+
+const viewingGroup = computed(() => store.discussionGroups.find(g => g.id === viewingGroupId.value))
+const viewingMessages = computed(() => store.groupMessages.get(viewingGroupId.value) || [])
+const groupScrollTop = computed(() => viewingMessages.value.length * 200)
+const lastReadCount = ref<Map<string, number>>(new Map())
+
+function groupUnread(groupId: string) {
+  const msgs = store.groupMessages.get(groupId) || []
+  const read = lastReadCount.value.get(groupId) || 0
+  if (groupId === viewingGroupId.value) {
+    lastReadCount.value.set(groupId, msgs.length)
+    return false
+  }
+  return msgs.length > read
+}
+
+function formatMsgTime(iso: string) {
+  try {
+    const d = new Date(iso)
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  } catch { return '' }
 }
 
 function startCompete() {
@@ -2908,6 +3037,13 @@ function confirmEndLesson() {
 function truncate(text: string, max: number) {
   const s = String(text || '')
   return s.length > max ? `${s.slice(0, max)}…` : s
+}
+
+function studentQuestions(sub: any) {
+  const stats = quizReport.value?.questionStats || []
+  if (!quizReport.value?.randomMode || !sub.assignedQuestionIds) return stats
+  const ids = new Set(sub.assignedQuestionIds)
+  return stats.filter((qs: any) => ids.has(qs.question.id))
 }
 
 function stateText(state: StudentInfo['state']) {
@@ -3456,11 +3592,18 @@ function stateText(state: StudentInfo['state']) {
 .modal-card {
   width: 100%;
   max-width: 760rpx;
+  max-height: calc(85vh - var(--safe-bottom));
+  overflow-y: auto;
   padding: var(--space-5);
   padding-bottom: calc(var(--space-5) + var(--safe-bottom));
   border-radius: var(--radius-2xl);
   background: var(--color-surface-raised);
   box-shadow: var(--elevation-5);
+}
+
+.modal-card:has(.quiz-two-col) {
+  max-width: 1200rpx;
+  overflow-y: hidden;
 }
 
 .modal-head {
@@ -3487,6 +3630,81 @@ function stateText(state: StudentInfo['state']) {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+}
+
+.form.quiz-two-col {
+  flex-direction: row;
+  align-items: stretch;
+  gap: var(--space-4);
+  max-height: calc(70vh - 120rpx);
+}
+
+.quiz-left {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  flex-shrink: 0;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.form.quiz-two-col .quiz-left {
+  width: 44%;
+  max-width: 520rpx;
+}
+
+.form.quiz-two-col .segmented {
+  flex-wrap: wrap;
+}
+
+.quiz-right {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border-left: 2rpx solid var(--color-outline-variant);
+  padding-left: var(--space-4);
+}
+
+.quiz-preview-scroll {
+  height: calc(55vh - 280rpx);
+}
+
+.quiz-dispatch-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--color-surface-variant);
+  border-radius: var(--radius-lg);
+}
+.quiz-dispatch-settings .option-label {
+  font-size: var(--font-caption);
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.quiz-dispatch-settings .option-row {
+  align-items: center;
+}
+.hint-text {
+  font-size: 22rpx;
+  color: var(--color-text-tertiary);
+  text-align: center;
+}
+
+.random-mode-badge {
+  text-align: center;
+  padding: var(--space-1) var(--space-3);
+  background: #f0f7ff;
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-2);
+}
+.random-mode-badge text {
+  font-size: var(--font-caption);
+  color: #2f6bff;
+  font-weight: var(--font-weight-semibold);
 }
 
 .segmented {
@@ -3872,6 +4090,72 @@ function stateText(state: StudentInfo['state']) {
   font-size: var(--font-label);
 }
 
+.student-detail-block {
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.student-detail-name {
+  font-weight: 600;
+}
+
+.per-q-row {
+  padding: var(--space-1) 0;
+  border-top: 1px solid var(--color-border, rgba(0,0,0,0.06));
+}
+
+.per-q-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-caption);
+}
+
+.per-q-idx {
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+  min-width: 40rpx;
+}
+
+.per-q-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-secondary);
+}
+
+.per-q-badge {
+  flex-shrink: 0;
+  font-size: 22rpx;
+  padding: 2rpx 12rpx;
+  border-radius: var(--radius-sm);
+}
+
+.badge-ok {
+  background: rgba(34,197,94,0.12);
+  color: #16a34a;
+}
+
+.badge-wrong {
+  background: rgba(239,68,68,0.12);
+  color: #dc2626;
+}
+
+.badge-miss {
+  background: rgba(156,163,175,0.12);
+  color: #6b7280;
+}
+
+.per-q-comment {
+  font-size: 22rpx;
+  color: var(--color-text-secondary);
+  padding: var(--space-1) 0 0 40rpx;
+  line-height: 1.4;
+}
+
 .attendance-list {
   display: flex;
   flex-direction: column;
@@ -4176,6 +4460,121 @@ function stateText(state: StudentInfo['state']) {
   color: var(--color-text-secondary);
   font-size: var(--font-label);
   line-height: var(--line-height-normal);
+}
+
+.group-tabs {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.group-tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  border: 2rpx solid var(--color-outline);
+  font-size: var(--font-caption);
+  color: var(--color-text-primary);
+  transition: all var(--duration-base) var(--ease-standard);
+}
+
+.group-tab.active {
+  background: var(--color-primary-container);
+  border-color: var(--color-primary);
+  color: var(--color-on-primary-container);
+}
+
+.group-tab-count {
+  font-size: 20rpx;
+  color: var(--color-text-tertiary);
+}
+
+.group-tab-dot {
+  position: absolute;
+  top: 4rpx;
+  right: 4rpx;
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: var(--radius-full);
+  background: var(--color-error);
+}
+
+.group-chat-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.group-members-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.group-member-tag {
+  font-size: 20rpx;
+  padding: 2rpx 10rpx;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+}
+
+.group-chat-scroll {
+  max-height: 480rpx;
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+}
+
+.group-chat-empty {
+  padding: var(--space-4);
+  text-align: center;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-caption);
+}
+
+.group-chat-msg {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  font-size: var(--font-caption);
+  border-bottom: 1px solid var(--color-border, rgba(0,0,0,0.04));
+}
+
+.group-chat-author {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: var(--color-primary);
+  min-width: 80rpx;
+
+  &.ai-author {
+    color: var(--color-secondary, #7c4dff);
+  }
+}
+
+.group-chat-msg.ai-msg {
+  background: var(--color-secondary-container, rgba(124, 77, 255, 0.06));
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  margin: 0 calc(-1 * var(--space-2));
+}
+
+.group-chat-text {
+  flex: 1;
+  color: var(--color-text-primary);
+  word-break: break-all;
+}
+
+.group-chat-time {
+  flex-shrink: 0;
+  font-size: 20rpx;
+  color: var(--color-text-tertiary);
+  font-variant-numeric: tabular-nums;
 }
 
 /* AI 生成中的流式进度条：让 30s+ 的等待不再像"卡死" */

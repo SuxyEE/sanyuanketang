@@ -134,8 +134,8 @@ function defaultCommentPrompt(reference: string): string {
  * - 截断为 2-12 字的短词，最多 3 个
  * - 完全没素材则返回 `['通用知识点']`，至少让聚合报告能跑通
  */
-function fallbackKnowledgePoints(topic: string | undefined, content: string | undefined): string[] {
-  const seeds = [topic, content].filter((s): s is string => !!s && typeof s === 'string')
+function fallbackKnowledgePoints(topic: string | undefined, _content: string | undefined): string[] {
+  const seeds = [topic].filter((s): s is string => !!s && typeof s === 'string')
   if (seeds.length === 0) return ['通用知识点']
   const candidates = new Set<string>()
   for (const seed of seeds) {
