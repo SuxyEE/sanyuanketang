@@ -11,21 +11,27 @@
       <view v-if="step === 'photo'" class="photo-stage">
         <view class="camera-box">
           <!-- #ifdef APP-PLUS || MP-WEIXIN -->
+          <!-- 仅在权限就绪且未拍照时挂载 <camera>，避免被拒权后留个无反馈黑框 -->
           <camera
+            v-if="appCamReady && !photoPath"
             class="camera"
             device-position="front"
             flash="off"
             mode="normal"
             @error="onCameraError"
           />
-          <cover-view class="face-mask">
+          <cover-view v-if="appCamReady && !photoPath" class="face-mask">
             <cover-view class="face-oval"></cover-view>
             <cover-view class="mask-tip">请将脸部置于框内，保持正面清晰</cover-view>
           </cover-view>
+          <view v-if="!appCamReady && !photoPath" class="camera-fallback">
+            <Icon :name="appCamError ? 'alert-circle' : 'user'" size="3xl" :tone="appCamError ? 'warning' : 'muted'" />
+            <text>{{ appCamError || '正在申请摄像头权限…' }}</text>
+            <Button v-if="appCamError" variant="secondary" size="sm" icon-left="refresh-cw" @tap="initAppCamera">重试授权</Button>
+          </view>
           <!-- #endif -->
           <!-- #ifdef H5 -->
           <view v-show="h5CameraReady && !photoPath" class="h5-cam-wrap">
-            <!-- 用原生 video 元素直接拉摄像头流，避免 uniapp camera 在 H5 不可用 -->
             <view class="h5-video-host" :id="h5VideoHostId" />
             <view class="face-mask-h5">
               <view class="face-oval-h5"></view>
@@ -33,9 +39,9 @@
             </view>
           </view>
           <view v-if="!h5CameraReady && !photoPath" class="camera-fallback">
-            <Icon v-if="!h5CameraError" name="user" size="3xl" tone="muted" />
-            <Icon v-else name="alert-circle" size="3xl" tone="warning" />
+            <Icon :name="h5CameraError ? 'alert-circle' : 'user'" size="3xl" :tone="h5CameraError ? 'warning' : 'muted'" />
             <text>{{ h5CameraError || '正在唤起摄像头…' }}</text>
+            <Button v-if="h5CameraError" variant="secondary" size="sm" icon-left="refresh-cw" @tap="initH5Camera">重试唤起</Button>
           </view>
           <!-- #endif -->
           <!-- #ifndef APP-PLUS || MP-WEIXIN || H5 -->
@@ -55,6 +61,16 @@
           @tap="takePhoto"
         >
           {{ photoPath ? '重新拍摄' : '拍摄正面照' }}
+        </Button>
+        <Button
+          v-if="!photoPath && (h5CameraError || appCamError)"
+          variant="ghost"
+          size="md"
+          block
+          icon-left="image"
+          @tap="chooseCameraImage"
+        >
+          直接调用系统相机
         </Button>
         <Button
           v-if="photoPath && requireLocation"
@@ -149,6 +165,11 @@ const distance = ref<number | null>(null)
 const cameraBroken = ref(false)
 let pulseTimer: ReturnType<typeof setTimeout> | null = null
 
+// App-Plus / 小程序：权限状态。挂载 <camera> 之前必须为 true，
+// 否则首次没权限时只看到一块无反馈黑框，用户根本不知道要去系统设置开权限。
+const appCamReady = ref(false)
+const appCamError = ref('')
+
 // H5 模式专用：用 getUserMedia 拉前置摄像头实时画面
 const h5VideoHostId = `signin-h5-cam-${Math.random().toString(36).slice(2, 8)}`
 const h5CameraReady = ref(false)
@@ -188,15 +209,41 @@ const locationDesc = computed(() => {
 
 function onCameraError(err: any) {
   cameraBroken.value = true
+  appCamError.value = '摄像头初始化失败，请检查系统设置中的相机权限'
+  appCamReady.value = false
   console.warn('[attendance camera] error', err)
 }
+
+// #ifdef APP-PLUS || MP-WEIXIN
+// 主动申请摄像头权限。<camera> 组件自身不会显式向用户解释为什么需要权限，
+// 首次拒绝后会留个无任何提示的黑框；改成先 authorize → 通过再挂 <camera>。
+function initAppCamera() {
+  appCamError.value = ''
+  appCamReady.value = false
+  cameraBroken.value = false
+  try {
+    uni.authorize({
+      scope: 'scope.camera',
+      success: () => {
+        appCamReady.value = true
+      },
+      fail: () => {
+        appCamError.value = '未获得相机权限，请到系统设置 → 应用权限中开启「相机」'
+      },
+    })
+  } catch {
+    appCamReady.value = true
+  }
+}
+// #endif
 
 function takePhoto() {
   if (takingPhoto.value) return
   takingPhoto.value = true
 
   // #ifdef APP-PLUS || MP-WEIXIN
-  if (!cameraBroken.value) {
+  // 没拿到权限 / camera 组件未挂载时，直接走系统相机选图，避免 createCameraContext 拿到空上下文
+  if (appCamReady.value && !cameraBroken.value) {
     const ctx = uni.createCameraContext()
     ctx.takePhoto({
       quality: 'normal',
@@ -281,23 +328,32 @@ function submit() {
 
 onMounted(() => {
   pulseTimer = setTimeout(() => { pulsing.value = false }, 2400)
+  // #ifdef APP-PLUS || MP-WEIXIN
+  if (props.requirePhoto && step.value === 'photo') {
+    initAppCamera()
+  }
+  // #endif
   // #ifdef H5
   if (props.requirePhoto && step.value === 'photo') {
-    // 略等 DOM 挂好再初始化 video host
-    setTimeout(() => initH5Camera(), 60)
+    setTimeout(() => initH5Camera(), 200)
   }
   // #endif
 })
 
 // 切换回拍照步骤、或清空照片重拍时，自动重启摄像头
-// #ifdef H5
 watch([step, photoPath], ([s, p]) => {
-  if (s === 'photo' && !p && !h5CameraReady.value) {
-    setTimeout(() => initH5Camera(), 60)
+  if (s === 'photo' && !p) {
+    // #ifdef APP-PLUS || MP-WEIXIN
+    if (!appCamReady.value && !appCamError.value) initAppCamera()
+    // #endif
+    // #ifdef H5
+    if (!h5CameraReady.value) setTimeout(() => initH5Camera(), 100)
+    // #endif
   }
+  // #ifdef H5
   if (s !== 'photo') stopH5Camera()
+  // #endif
 })
-// #endif
 
 onUnmounted(() => {
   if (pulseTimer) clearTimeout(pulseTimer)
@@ -307,22 +363,54 @@ onUnmounted(() => {
 })
 
 // #ifdef H5
+// 重试拿到承载 video 的 DOM 节点。uniapp <view :id> 的 id 属性在 H5
+// 实际是绑到 <uni-view> 上，首次渲染可能比 onMounted 还慢一拍，
+// 所以这里轮询 5 次（每次 80ms）兜底，避免曾经那种「拿不到 host 就静默 return → 永远黑框」。
+function waitForHost(maxTries = 5): Promise<HTMLElement | null> {
+  return new Promise((resolve) => {
+    let tries = 0
+    const tick = () => {
+      const el = document.getElementById(h5VideoHostId) as HTMLElement | null
+      if (el) return resolve(el)
+      tries += 1
+      if (tries >= maxTries) return resolve(null)
+      setTimeout(tick, 80)
+    }
+    tick()
+  })
+}
+
+function isInsecureContext(): boolean {
+  if (typeof window === 'undefined') return false
+  const isHttps = window.location?.protocol === 'https:'
+  const host = window.location?.hostname || ''
+  const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '::1'
+  return !isHttps && !isLocal
+}
+
 function initH5Camera() {
   h5CameraError.value = ''
   h5CameraReady.value = false
   const md: any = (typeof navigator !== 'undefined' && (navigator as any).mediaDevices) || null
   if (!md || typeof md.getUserMedia !== 'function') {
-    h5CameraError.value = '当前浏览器不支持摄像头（请使用 HTTPS 访问或更换浏览器）'
+    h5CameraError.value = isInsecureContext()
+      ? '通过 IP 访问的非 HTTPS 页面无法调用摄像头。请改用 localhost 或开启 HTTPS。'
+      : '当前浏览器不支持摄像头（请更换浏览器）'
     return
   }
   md.getUserMedia({
     video: { facingMode: 'user', width: { ideal: 720 }, height: { ideal: 720 } },
     audio: false,
-  }).then((stream: any) => {
+  }).then(async (stream: any) => {
     h5MediaStream = stream
-    // 在 host 容器里手动插入 video（避免 uniapp 模板里 video 与 video 标签冲突）
-    const host = document.getElementById(h5VideoHostId) as HTMLElement | null
-    if (!host) return
+    const host = await waitForHost()
+    if (!host) {
+      // 防止 stream 泄漏
+      stream.getTracks?.().forEach((t: any) => t.stop && t.stop())
+      h5MediaStream = null
+      h5CameraError.value = '摄像头预览容器加载失败，请点重试'
+      return
+    }
     host.innerHTML = ''
     const v = document.createElement('video')
     v.autoplay = true
@@ -339,7 +427,9 @@ function initH5Camera() {
   }).catch((err: any) => {
     const name = err?.name
     if (name === 'NotAllowedError') {
-      h5CameraError.value = '已拒绝摄像头权限，请在浏览器允许后重试'
+      h5CameraError.value = isInsecureContext()
+        ? '当前为非安全上下文（HTTP+IP）。浏览器只允许在 HTTPS / localhost 调用摄像头。'
+        : '已拒绝摄像头权限，请在浏览器地址栏左侧的权限设置中开启相机后点重试'
     } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
       h5CameraError.value = '未找到可用摄像头'
     } else if (name === 'NotReadableError') {

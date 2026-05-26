@@ -57,6 +57,8 @@ export type IconName =
   | 'sparkle-dot'
   | 'rocket'
   | 'party-popper'
+  | 'refresh-cw'
+  | 'image'
 
 const wrap = (body: string): string =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`
@@ -222,5 +224,15 @@ export const icons: Record<IconName, string> = {
   // 庆祝（课后页）
   'party-popper': wrap(
     '<path d="M5.8 11.3 2 22l10.7-3.79"/><path d="M4 3h.01"/><path d="M22 8h.01"/><path d="M15 2h.01"/><path d="M22 20h.01"/><path d="m22 2-2.24.75a2.9 2.9 0 0 0-1.96 3.12c.1.86-.57 1.63-1.45 1.63h-.38c-.86 0-1.6.6-1.76 1.44L14 10"/><path d="m22 13-1.5-.75c-.87-.45-1.94-.08-2.31.79l-.27.65c-.36.85-1.45 1.06-2.07.4l-.74-.79c-.62-.66-1.71-.45-2.06.41l-.36.86c-.4.95-1.72 1.06-2.27.18l-1.6-2.55"/><path d="M16.4 16.4 21 21"/>',
+  ),
+
+  // 刷新 / 重试
+  'refresh-cw': wrap(
+    '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/>',
+  ),
+
+  // 图片 / 相册
+  image: wrap(
+    '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>',
   ),
 }
