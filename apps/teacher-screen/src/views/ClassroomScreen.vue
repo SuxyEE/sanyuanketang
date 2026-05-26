@@ -674,6 +674,12 @@ const handlers = {
     store.setAiPractice(data)
     showBroadcastBanner(`AI 实践已开启：${data.topic}`, 4500)
   },
+  // 教师端点击「结束 AI 实践」→ server 广播 'ai:practice:end' → 这里清空本地快照，
+  // 否则大屏会一直停在 ai-practice 展示卡片，无法回到常规课件视图。
+  onAiPracticeEnd: () => {
+    store.aiPractice = null
+    showBroadcastBanner('AI 实践已结束', 3000)
+  },
   onAiWhiteboardShow: (data: AiWhiteboardPayload & { error?: string }) => {
     if (!data || !Array.isArray(data.items) || data.error) {
       showBroadcastBanner(data?.error || 'AI 板书下发失败', 4500)
@@ -788,6 +794,7 @@ onMounted(() => {
   s.on('attendance:end', handlers.onAttendanceEnd)
   s.on('attendance:signed', handlers.onAttendanceSigned)
   s.on('ai:practice:start', handlers.onAiPracticeStart)
+  s.on('ai:practice:end', handlers.onAiPracticeEnd)
   s.on('ai:whiteboard:show', handlers.onAiWhiteboardShow)
   s.on('ai:whiteboard:hide', handlers.onAiWhiteboardHide)
   s.on('compete:start', handlers.onCompeteStart)
@@ -837,6 +844,7 @@ onUnmounted(() => {
     s.off('attendance:end', handlers.onAttendanceEnd)
     s.off('attendance:signed', handlers.onAttendanceSigned)
     s.off('ai:practice:start', handlers.onAiPracticeStart)
+    s.off('ai:practice:end', handlers.onAiPracticeEnd)
     s.off('ai:whiteboard:show', handlers.onAiWhiteboardShow)
     s.off('ai:whiteboard:hide', handlers.onAiWhiteboardHide)
     s.off('compete:start', handlers.onCompeteStart)
