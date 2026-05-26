@@ -2115,6 +2115,7 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       imageBase64?: string
       stream?: boolean
       source?: string
+      groupId?: string
       /** 客户端可选指定模型，例 "qwen:qwen-turbo" / "openai:gpt-4o" */
       model?: string
       /** 客户端自带 key 覆盖服务端默认 */
@@ -2130,6 +2131,17 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       room.reportData.aiChatCount += 1
     }
     this.logger.log(`AI chat from ${member?.userName} [${source}] [${data.model || 'default'}]: ${data.message?.slice(0, 30)}`)
+
+    const isGroupDiscussion = source === 'group-discussion' && roomId && data.groupId
+    if (isGroupDiscussion) {
+      this.emitToRoom(roomId, 'group:msg', {
+        groupId: String(data.groupId),
+        studentId: member?.userId || '',
+        studentName: member?.userName || '',
+        text: `@AI ${data.message}`,
+        time: new Date().toISOString(),
+      })
+    }
 
     try {
       if (data.stream) {
@@ -2147,6 +2159,16 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
           client.emit('ai:stream', { chunk, done: false, source })
         }
         client.emit('ai:stream', { chunk: '', done: true, fullContent, source })
+        if (isGroupDiscussion) {
+          this.emitToRoom(roomId, 'group:msg', {
+            groupId: String(data.groupId),
+            studentId: '__ai__',
+            studentName: 'AI',
+            text: fullContent,
+            time: new Date().toISOString(),
+            originStudentId: member?.userId,
+          })
+        }
       } else {
         const response = await this.aiService.chat({
           message: data.message,
@@ -2166,6 +2188,16 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
           time: new Date().toISOString(),
           source,
         })
+        if (isGroupDiscussion) {
+          this.emitToRoom(roomId, 'group:msg', {
+            groupId: String(data.groupId),
+            studentId: '__ai__',
+            studentName: 'AI',
+            text: response.content,
+            time: new Date().toISOString(),
+            originStudentId: member?.userId,
+          })
+        }
       }
     } catch (err) {
       this.logger.error(`AI chat error: ${err}`)

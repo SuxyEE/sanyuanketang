@@ -539,9 +539,6 @@
         </view>
 
         <view v-else-if="activePanel === 'discuss'" class="form">
-          <view v-if="store.activeDiscussion" class="hint-box">
-            <text>当前正在进行讨论：{{ store.activeDiscussion.topic || '（未设主题）' }}</text>
-          </view>
           <template v-if="!store.activeDiscussion">
             <view class="option-row">
               <button v-for="strategy in groupStrategies" :key="strategy.value" class="option-card" :class="{ active: groupStrategy === strategy.value }" @tap="groupStrategy = strategy.value">
@@ -560,15 +557,47 @@
                 <text>{{ m }} 分钟</text>
               </button>
             </view>
+            <Button block icon-left="users" @tap="startGroupDiscussion">开始分组讨论</Button>
           </template>
-          <Button
-            v-if="store.activeDiscussion"
-            variant="danger"
-            block
-            icon-left="stop-circle"
-            @tap="endGroupDiscussion"
-          >结束分组讨论</Button>
-          <Button v-else block icon-left="users" @tap="startGroupDiscussion">开始分组讨论</Button>
+          <template v-else>
+            <view class="hint-box">
+              <text>讨论中：{{ store.activeDiscussion.topic || '（未设主题）' }} · {{ store.discussionGroups.length }} 组</text>
+            </view>
+            <view class="group-tabs">
+              <button
+                v-for="g in store.discussionGroups"
+                :key="g.id"
+                class="group-tab"
+                :class="{ active: viewingGroupId === g.id }"
+                @tap="viewingGroupId = g.id"
+              >
+                <text>{{ g.name }}</text>
+                <text class="group-tab-count">{{ g.members.length }}人</text>
+                <view v-if="groupUnread(g.id)" class="group-tab-dot"></view>
+              </button>
+            </view>
+            <view v-if="viewingGroupId" class="group-chat-box">
+              <view class="group-members-bar">
+                <text v-for="m in viewingGroup?.members" :key="m.id" class="group-member-tag">{{ m.name }}</text>
+              </view>
+              <scroll-view scroll-y class="group-chat-scroll" :scroll-top="groupScrollTop">
+                <view v-if="viewingMessages.length === 0" class="group-chat-empty">
+                  <text>暂无消息</text>
+                </view>
+                <view v-for="(msg, idx) in viewingMessages" :key="idx" class="group-chat-msg" :class="{ 'ai-msg': msg.studentId === '__ai__' }">
+                  <text class="group-chat-author" :class="{ 'ai-author': msg.studentId === '__ai__' }">{{ msg.studentName }}</text>
+                  <text class="group-chat-text">{{ msg.text }}</text>
+                  <text class="group-chat-time">{{ formatMsgTime(msg.time) }}</text>
+                </view>
+              </scroll-view>
+            </view>
+            <Button
+              variant="danger"
+              block
+              icon-left="stop-circle"
+              @tap="endGroupDiscussion"
+            >结束分组讨论</Button>
+          </template>
         </view>
 
         <view v-else-if="activePanel === 'ai'" class="form">
@@ -886,6 +915,7 @@ const groupStrategy = ref('random')
 const groupCount = ref(2)
 const groupTopic = ref('')
 const groupDuration = ref(10)
+const viewingGroupId = ref('')
 const whiteboardTopic = ref('')
 const whiteboardHint = ref('')
 const isGeneratingWhiteboard = ref(false)
@@ -1555,21 +1585,42 @@ const socketHandlers = {
     if (activeActivity.value === 'ai') activeActivity.value = ''
     store.activeAiPractice = null
   },
-  onGroupCreate: (data: { groups?: any[]; topic?: string; duration?: number; strategy?: string }) => {
-    if (data?.groups && data.groups.length > 0) {
+  onGroupCreate: (data: any) => {
+    const groups = Array.isArray(data) ? data : data?.groups
+    if (groups && groups.length > 0) {
       activeActivity.value = 'discuss'
-      store.activeDiscussion = {
-        topic: data.topic || '',
-        duration: data.duration || 0,
-        startedAt: Date.now(),
-        strategy: data.strategy || 'random',
-        groupCount: data.groups.length,
+      if (!store.activeDiscussion) {
+        store.activeDiscussion = {
+          topic: '',
+          duration: 0,
+          startedAt: Date.now(),
+          strategy: 'random',
+          groupCount: groups.length,
+        }
+      } else {
+        store.activeDiscussion.groupCount = groups.length
+      }
+      store.discussionGroups = groups
+      store.groupMessages = new Map()
+      if (!viewingGroupId.value) {
+        viewingGroupId.value = groups[0].id
       }
     }
   },
   onGroupDissolve: () => {
     if (activeActivity.value === 'discuss') activeActivity.value = ''
     store.activeDiscussion = null
+    store.discussionGroups = []
+    store.groupMessages = new Map()
+    viewingGroupId.value = ''
+  },
+  onGroupMsg: (data: { groupId: string; studentId: string; studentName: string; text: string; time: string }) => {
+    if (!data?.groupId) return
+    const msgs = store.groupMessages.get(data.groupId) || []
+    msgs.push({ studentId: data.studentId, studentName: data.studentName, text: data.text, time: data.time })
+    if (msgs.length > 200) msgs.splice(0, 50)
+    store.groupMessages.set(data.groupId, msgs)
+    store.groupMessages = new Map(store.groupMessages)
   },
   onWhiteboardGen: (result: any) => {
     isGeneratingWhiteboard.value = false
@@ -1649,6 +1700,7 @@ onMounted(() => {
   s.on(RoomEvent.AiPracticeEnd, socketHandlers.onAiPracticeEnd)
   s.on(RoomEvent.GroupCreate, socketHandlers.onGroupCreate)
   s.on(RoomEvent.GroupDissolve, socketHandlers.onGroupDissolve)
+  s.on(RoomEvent.GroupMsg, socketHandlers.onGroupMsg)
   s.on(RoomEvent.AiWhiteboardGen, socketHandlers.onWhiteboardGen)
   s.on(RoomEvent.AiWhiteboardGenProgress, socketHandlers.onWhiteboardGenProgress)
   s.on(RoomEvent.AiInteractiveGen, socketHandlers.onInteractiveGen)
@@ -1700,6 +1752,7 @@ onUnmounted(() => {
   s.off(RoomEvent.AiPracticeEnd, socketHandlers.onAiPracticeEnd)
   s.off(RoomEvent.GroupCreate, socketHandlers.onGroupCreate)
   s.off(RoomEvent.GroupDissolve, socketHandlers.onGroupDissolve)
+  s.off(RoomEvent.GroupMsg, socketHandlers.onGroupMsg)
   s.off(RoomEvent.AiWhiteboardGen, socketHandlers.onWhiteboardGen)
   s.off(RoomEvent.AiWhiteboardGenProgress, socketHandlers.onWhiteboardGenProgress)
   s.off(RoomEvent.AiInteractiveGen, socketHandlers.onInteractiveGen)
@@ -2591,7 +2644,32 @@ function endGroupDiscussion() {
   if (!store.activeDiscussion) return
   emit(RoomEvent.GroupDissolve, {})
   store.activeDiscussion = null
+  store.discussionGroups = []
+  store.groupMessages = new Map()
+  viewingGroupId.value = ''
   toast('已结束分组讨论')
+}
+
+const viewingGroup = computed(() => store.discussionGroups.find(g => g.id === viewingGroupId.value))
+const viewingMessages = computed(() => store.groupMessages.get(viewingGroupId.value) || [])
+const groupScrollTop = computed(() => viewingMessages.value.length * 200)
+const lastReadCount = ref<Map<string, number>>(new Map())
+
+function groupUnread(groupId: string) {
+  const msgs = store.groupMessages.get(groupId) || []
+  const read = lastReadCount.value.get(groupId) || 0
+  if (groupId === viewingGroupId.value) {
+    lastReadCount.value.set(groupId, msgs.length)
+    return false
+  }
+  return msgs.length > read
+}
+
+function formatMsgTime(iso: string) {
+  try {
+    const d = new Date(iso)
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  } catch { return '' }
 }
 
 function startCompete() {
@@ -4382,6 +4460,121 @@ function stateText(state: StudentInfo['state']) {
   color: var(--color-text-secondary);
   font-size: var(--font-label);
   line-height: var(--line-height-normal);
+}
+
+.group-tabs {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.group-tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  border: 2rpx solid var(--color-outline);
+  font-size: var(--font-caption);
+  color: var(--color-text-primary);
+  transition: all var(--duration-base) var(--ease-standard);
+}
+
+.group-tab.active {
+  background: var(--color-primary-container);
+  border-color: var(--color-primary);
+  color: var(--color-on-primary-container);
+}
+
+.group-tab-count {
+  font-size: 20rpx;
+  color: var(--color-text-tertiary);
+}
+
+.group-tab-dot {
+  position: absolute;
+  top: 4rpx;
+  right: 4rpx;
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: var(--radius-full);
+  background: var(--color-error);
+}
+
+.group-chat-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.group-members-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.group-member-tag {
+  font-size: 20rpx;
+  padding: 2rpx 10rpx;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+}
+
+.group-chat-scroll {
+  max-height: 480rpx;
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+}
+
+.group-chat-empty {
+  padding: var(--space-4);
+  text-align: center;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-caption);
+}
+
+.group-chat-msg {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  font-size: var(--font-caption);
+  border-bottom: 1px solid var(--color-border, rgba(0,0,0,0.04));
+}
+
+.group-chat-author {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: var(--color-primary);
+  min-width: 80rpx;
+
+  &.ai-author {
+    color: var(--color-secondary, #7c4dff);
+  }
+}
+
+.group-chat-msg.ai-msg {
+  background: var(--color-secondary-container, rgba(124, 77, 255, 0.06));
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  margin: 0 calc(-1 * var(--space-2));
+}
+
+.group-chat-text {
+  flex: 1;
+  color: var(--color-text-primary);
+  word-break: break-all;
+}
+
+.group-chat-time {
+  flex-shrink: 0;
+  font-size: 20rpx;
+  color: var(--color-text-tertiary);
+  font-variant-numeric: tabular-nums;
 }
 
 /* AI 生成中的流式进度条：让 30s+ 的等待不再像"卡死" */

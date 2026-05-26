@@ -3,6 +3,9 @@
     <view class="head">
       <view class="info">
         <view class="info-title-row">
+          <button class="back-btn" @tap="$emit('back')">
+            <Icon name="chevron-left" size="md" />
+          </button>
           <view class="info-icon-wrap"><Icon name="users" size="sm" tone="primary" /></view>
           <text class="title">{{ group.name }} · 小组讨论</text>
         </view>
@@ -96,6 +99,8 @@ const props = defineProps<{
   studentName: string
 }>()
 
+defineEmits<{ back: [] }>()
+
 const { getSocket } = useSocket()
 const store = useStudentStore()
 
@@ -164,6 +169,7 @@ function send() {
     s.emit(RoomEvent.AiChat, {
       message: q,
       source: 'group-discussion',
+      groupId: props.group.id,
       slideIndex: store.currentSlide,
       stream: false,
     })
@@ -178,12 +184,13 @@ function send() {
 function onGroupMsg(data: any) {
   if (data.groupId !== props.group.id) return
   if (data.studentId === props.studentId) return
+  if (data.studentId === '__ai__' && data.originStudentId === props.studentId) return
   push({
     author: data.studentName,
     content: data.text,
     time: formatHm(),
     isMine: false,
-    isAi: false,
+    isAi: data.studentId === '__ai__',
   })
 }
 
@@ -243,6 +250,20 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
+}
+
+.back-btn {
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-variant);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  color: var(--color-text-primary);
 }
 
 .info-title-row {

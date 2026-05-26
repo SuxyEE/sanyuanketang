@@ -62,6 +62,8 @@ export const useClassroomStore = defineStore('teacher-classroom', () => {
   const activeAttendance = ref<ActiveAttendanceState | null>(null)
   const activeAiPractice = ref<{ topic: string; prompt?: string; startedAt: string } | null>(null)
   const activeDiscussion = ref<{ topic: string; duration: number; startedAt: number; strategy: string; groupCount: number } | null>(null)
+  const discussionGroups = ref<Array<{ id: string; name: string; members: Array<{ id: string; name: string }>; topic?: string }>>([])
+  const groupMessages = ref<Map<string, Array<{ studentId: string; studentName: string; text: string; time: string }>>>(new Map())
 
   const onlineCount = computed(() => students.value.filter((s) => s.state !== 'offline').length)
   const totalCount = computed(() => students.value.length)
@@ -125,6 +127,8 @@ export const useClassroomStore = defineStore('teacher-classroom', () => {
     activeAttendance.value = null
     activeAiPractice.value = null
     activeDiscussion.value = null
+    discussionGroups.value = []
+    groupMessages.value = new Map()
     attendanceSigned.value = []
     questions.value = []
     slides.value = []
@@ -154,6 +158,8 @@ export const useClassroomStore = defineStore('teacher-classroom', () => {
     activeAttendance,
     activeAiPractice,
     activeDiscussion,
+    discussionGroups,
+    groupMessages,
     onlineCount,
     totalCount,
     submittedCount,
