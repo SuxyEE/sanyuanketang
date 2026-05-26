@@ -439,7 +439,7 @@
                   <text>{{ d.label }}</text>
                 </button>
               </view>
-              <Button block icon-left="sparkles" :loading="isGeneratingQuiz" @tap="generateQuiz">AI 自动出题（生成 20 题题库）</Button>
+              <Button block icon-left="sparkles" :loading="isGeneratingQuiz" @tap="generateQuiz">AI 自动出题</Button>
             </template>
             <template v-else>
               <input v-model="manualQuizTitle" class="input" placeholder="测验标题" />

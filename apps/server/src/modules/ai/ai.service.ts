@@ -365,7 +365,7 @@ export class AiService {
    * - 模型端会按其自身硬上限自动 clamp（Qwen3.5/3.7-Max 可到 32k，OpenAI gpt-4o 16k，Claude 8k）
    *   传 50000 不会报错，只会让模型尽情输出到它能给的最大
    */
-  private static readonly MAX_OUTPUT_TOKENS = 50000
+  private static readonly MAX_OUTPUT_TOKENS = 65000
 
   constructor(
     private config: ConfigService,
