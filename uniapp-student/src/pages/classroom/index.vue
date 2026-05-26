@@ -479,6 +479,12 @@
       :payload="aiInteractivePayload"
       @close="showAiInteractive = false"
     />
+    <AiWhiteboardViewer
+      v-if="aiWhiteboardPayload"
+      ref="aiWhiteboardViewerRef"
+      :board="aiWhiteboardPayload"
+      @close="aiWhiteboardPayload = null"
+    />
 
     <Overlay
       v-if="showQuestion"
@@ -543,6 +549,7 @@ import AiChatDrawer from '@/components/AiChatDrawer.vue'
 import NotesPanel from '@/components/NotesPanel.vue'
 import SignInPopup from '@/components/SignInPopup.vue'
 import AiInteractiveViewer from '@/components/AiInteractiveViewer.vue'
+import AiWhiteboardViewer from '@/components/AiWhiteboardViewer.vue'
 import { lockToCurrentApp, unlockApp } from '@/kiosk'
 import { refreshFullscreenOnShow } from '@/composables/useAntiExit'
 import Icon from '@/components/ui/Icon.vue'
@@ -567,6 +574,8 @@ const showQuestion = ref(false)
 const questionText = ref('')
 const showAiInteractive = ref(false)
 const aiInteractivePayload = ref<any>(null)
+const aiWhiteboardPayload = ref<any>(null)
+const aiWhiteboardViewerRef = ref<any>(null)
 
 /* ===== 蒙版涂鸦（学生只读） ===== */
 interface AnnoPoint { x: number; y: number }
@@ -1015,6 +1024,7 @@ function applyLessonStart(data: { courseName?: string; lessonTitle?: string; res
   aiPracticeTopic.value = ''
   aiInteractivePayload.value = null
   showAiInteractive.value = false
+  aiWhiteboardPayload.value = null
 }
 
 onMounted(() => {
@@ -1198,6 +1208,23 @@ onMounted(() => {
     showAiInteractive.value = false
   })
 
+  s.on(RoomEvent.AiWhiteboardShow, (data: any) => {
+    if (!data || !Array.isArray(data.items) || data.items.length === 0 || data.error) return
+    aiWhiteboardPayload.value = data
+  })
+
+  s.on(RoomEvent.AiWhiteboardHide, () => {
+    aiWhiteboardPayload.value = null
+  })
+
+  s.on(RoomEvent.AiWhiteboardStroke, (data: any) => {
+    aiWhiteboardViewerRef.value?.drawStroke(data)
+  })
+
+  s.on(RoomEvent.AiWhiteboardClear, () => {
+    aiWhiteboardViewerRef.value?.clearCanvas()
+  })
+
   s.on(RoomEvent.LessonEnd, () => {
     showToast('本节课已结束', 'info', 4000)
     store.viewState = 'listening'
@@ -1265,6 +1292,10 @@ onUnmounted(() => {
     RoomEvent.AiPracticeEnd,
     RoomEvent.AiInteractiveShow,
     RoomEvent.AiInteractiveHide,
+    RoomEvent.AiWhiteboardShow,
+    RoomEvent.AiWhiteboardHide,
+    RoomEvent.AiWhiteboardStroke,
+    RoomEvent.AiWhiteboardClear,
     'quiz:submit:ack',
     'connect',
     'disconnect',

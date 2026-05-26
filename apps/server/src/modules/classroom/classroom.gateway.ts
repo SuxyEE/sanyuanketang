@@ -2279,9 +2279,8 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
     try {
       let lastEmittedChars = 0
       let finalResult: WhiteboardGenResult | null = null
-      // 边收 LLM 增量边给请求方推进度，避免 30s+ 看起来像挂了
-      // 节流：每累计 200 字符或 350ms 推一次，避免事件风暴
       let lastEmitAt = Date.now()
+
       for await (const ev of this.aiService.generateWhiteboardStream(data)) {
         if (ev.type === 'delta') {
           const now = Date.now()
@@ -2297,7 +2296,6 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
           finalResult = ev.result
         }
       }
-      // 最终进度 + 完整 payload
       client.emit('ai:whiteboard:gen:progress', {
         totalChars: lastEmittedChars,
         done: true,
@@ -2522,6 +2520,24 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
     const roomId = this.socketToRoom.get(client.id)
     if (roomId) {
       this.emitToRoom(roomId, 'ai:whiteboard:hide')
+    }
+  }
+
+  /** 教师板书画笔：完整笔画转发到大屏和学生端 */
+  @SubscribeMessage('ai:whiteboard:stroke')
+  handleAiWhiteboardStroke(@ConnectedSocket() client: Socket, @MessageBody() data: any) {
+    const roomId = this.socketToRoom.get(client.id)
+    if (roomId) {
+      client.to(roomId).emit(RoomEvent.AiWhiteboardStroke, data)
+    }
+  }
+
+  /** 教师板书画笔：清除所有标注 */
+  @SubscribeMessage('ai:whiteboard:clear')
+  handleAiWhiteboardClear(@ConnectedSocket() client: Socket) {
+    const roomId = this.socketToRoom.get(client.id)
+    if (roomId) {
+      client.to(roomId).emit(RoomEvent.AiWhiteboardClear)
     }
   }
 

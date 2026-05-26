@@ -378,7 +378,7 @@
     </view>
 
     <view v-if="activePanel" class="modal-mask" @tap="closePanel">
-      <view class="modal-card" @tap.stop>
+      <view class="modal-card" :class="{ 'modal-card-wide': activePanel === 'ai-whiteboard' || activePanel === 'ai' }" @tap.stop>
         <view class="modal-head">
           <text class="modal-title">{{ panelTitle }}</text>
           <button class="close-btn" @tap="closePanel">
@@ -600,36 +600,51 @@
           </template>
         </view>
 
-        <view v-else-if="activePanel === 'ai'" class="form">
-          <input v-model="aiTopic" class="input" placeholder="AI 实践主题" :disabled="!!store.activeAiPractice" />
-          <textarea v-model="aiPrompt" class="textarea" placeholder="实践要求或提示词" :disabled="!!store.activeAiPractice" />
-          <view v-if="store.activeAiPractice" class="hint-box">
-            <text>当前正在进行：{{ store.activeAiPractice.topic }}</text>
-          </view>
-
-          <Button
-            v-if="store.activeAiPractice"
-            variant="danger"
-            block
-            icon-left="stop-circle"
-            @tap="endAiPractice"
-          >结束 AI 实践（学生回到课件）</Button>
-          <template v-else>
-            <Button
-              block
-              icon-left="sparkles"
-              :loading="isGeneratingAiPractice"
-              @tap="generateAiPracticePreview"
-            >{{ aiPracticePreview ? '重新生成预览' : '生成 AI 实践预览' }}</Button>
-
-            <view v-if="isGeneratingAiPractice" class="gen-progress" role="status" aria-live="polite">
-              <view class="gen-progress-bar"><view class="gen-progress-bar-fill" :style="{ width: aiPracticeProgressPercent + '%' }" /></view>
-              <text class="gen-progress-text">AI 正在写 HTML… 已生成 {{ aiPracticeGenChars }} 字符</text>
+        <view v-else-if="activePanel === 'ai'" class="ai-practice-layout">
+          <view class="ai-practice-left form ai-practice-panel">
+            <view class="ai-practice-hero">
+              <text class="ai-practice-kicker">学生端交互任务</text>
+              <text class="ai-practice-title">生成一个可下发的 AI 实践沙盘</text>
+              <text class="ai-practice-desc">输入主题和要求后，AI 会生成一份学生平板可打开的互动 HTML，用于课堂练习、仿真演示或分步探究。</text>
+            </view>
+            <view class="ai-field">
+              <text class="ai-field-label">实践主题</text>
+              <input v-model="aiTopic" class="input" placeholder="例如：PLC 梯形图互锁控制" :disabled="!!store.activeAiPractice" />
+            </view>
+            <view class="ai-field">
+              <text class="ai-field-label">任务要求</text>
+              <textarea v-model="aiPrompt" class="textarea" placeholder="例如：让学生拖拽触点完成电机正反转互锁，并给出即时反馈" :disabled="!!store.activeAiPractice" />
+            </view>
+            <view v-if="store.activeAiPractice" class="hint-box">
+              <text>当前正在进行：{{ store.activeAiPractice.topic }}</text>
             </view>
 
-            <view v-if="aiPracticePreview" class="preview-card">
+            <Button
+              v-if="store.activeAiPractice"
+              variant="danger"
+              block
+              icon-left="stop-circle"
+              @tap="endAiPractice"
+            >结束 AI 实践（学生回到课件）</Button>
+            <template v-else>
+              <Button
+                block
+                icon-left="sparkles"
+                :loading="isGeneratingAiPractice"
+                @tap="generateAiPracticePreview"
+              >{{ aiPracticePreview ? '重新生成预览' : '生成 AI 实践预览' }}</Button>
+
+              <view v-if="isGeneratingAiPractice" class="gen-progress" role="status" aria-live="polite">
+                <view class="gen-progress-bar"><view class="gen-progress-bar-fill" :style="{ width: aiPracticeProgressPercent + '%' }" /></view>
+                <text class="gen-progress-text">AI 正在写 HTML… 已生成 {{ aiPracticeGenChars }} 字符</text>
+              </view>
+            </template>
+          </view>
+
+          <view v-if="aiPracticePreview" class="ai-practice-right">
+            <view class="preview-card ai-practice-preview-card">
               <view class="preview-card-head">
-                <text class="preview-card-badge">教师端预览</text>
+                <text class="preview-card-badge">待下发预览</text>
                 <text class="preview-card-title">{{ aiPracticePreview.title || aiPracticePreview.topic || 'AI 实践' }}</text>
               </view>
               <text v-if="aiPracticePreview.description" class="preview-card-subtitle">{{ aiPracticePreview.description }}</text>
@@ -646,52 +661,81 @@
                 <Button variant="secondary" block icon-left="x" @tap="discardAiPracticePreview">放弃预览</Button>
               </view>
             </view>
-          </template>
+          </view>
         </view>
 
-        <view v-else-if="activePanel === 'ai-whiteboard'" class="form">
-          <input v-model="whiteboardTopic" class="input" placeholder="板书主题，例如：PLC 梯形图基础" />
-          <textarea v-model="whiteboardHint" class="textarea" placeholder="额外说明，例如：需要表格、公式或流程图" />
-          <view class="chip-row">
-            <button v-for="preset in whiteboardPresets" :key="preset.topic" class="chip" @tap="whiteboardTopic = preset.topic; whiteboardHint = preset.hint">{{ preset.topic }}</button>
-          </view>
-          <Button block icon-left="sparkles" :loading="isGeneratingWhiteboard" @tap="generateWhiteboard">
-            {{ whiteboardPreview ? '重新生成' : '生成板书预览' }}
-          </Button>
-
-          <view v-if="isGeneratingWhiteboard" class="gen-progress" role="status" aria-live="polite">
-            <view class="gen-progress-bar"><view class="gen-progress-bar-fill" :style="{ width: whiteboardProgressPercent + '%' }" /></view>
-            <text class="gen-progress-text">AI 正在写板书… 已生成 {{ whiteboardGenChars }} 字符</text>
-          </view>
-
-          <view v-if="whiteboardPreview" class="preview-card">
-            <view class="preview-card-head">
-              <text class="preview-card-badge">教师端预览</text>
-              <text class="preview-card-title">{{ whiteboardPreview.title || whiteboardPreview.topic || '板书' }}</text>
+        <view v-else-if="activePanel === 'ai-whiteboard'" class="wb-split-layout">
+          <scroll-view class="wb-left-form form" scroll-y :show-scrollbar="false">
+            <input v-model="whiteboardTopic" class="input" placeholder="板书主题，例如：PLC 梯形图基础" />
+            <textarea v-model="whiteboardHint" class="textarea" placeholder="额外说明，例如：需要表格、公式或流程图" />
+            <view class="chip-row">
+              <button v-for="preset in whiteboardPresets" :key="preset.topic" class="chip" @tap="whiteboardTopic = preset.topic; whiteboardHint = preset.hint">{{ preset.topic }}</button>
             </view>
-            <text v-if="whiteboardPreview.subtitle" class="preview-card-subtitle">{{ whiteboardPreview.subtitle }}</text>
-            <view class="preview-items">
-              <view
-                v-for="(item, idx) in (whiteboardPreview.items || []).slice(0, 6)"
-                :key="idx"
-                class="preview-item-row"
-              >
-                <text class="preview-item-bullet">{{ idx + 1 }}</text>
-                <text class="preview-item-text">
-                  {{ typeof item === 'string' ? item : (item?.text || item?.label || item?.title || JSON.stringify(item).slice(0, 60)) }}
-                </text>
-              </view>
-              <text v-if="(whiteboardPreview.items || []).length > 6" class="preview-item-more">
-                …还有 {{ (whiteboardPreview.items || []).length - 6 }} 条
-              </text>
+            <Button block icon-left="sparkles" :loading="isGeneratingWhiteboard" @tap="generateWhiteboard">
+              {{ whiteboardPreview ? '重新生成' : '生成板书预览' }}
+            </Button>
+
+            <view v-if="isGeneratingWhiteboard" class="gen-progress" role="status" aria-live="polite">
+              <view class="gen-progress-bar"><view class="gen-progress-bar-fill" :style="{ width: whiteboardProgressPercent + '%' }" /></view>
+              <text class="gen-progress-text">AI 正在写板书… 已生成 {{ whiteboardGenChars }} 字符</text>
             </view>
-            <view class="preview-actions">
+
+            <view v-if="whiteboardPreview && !isGeneratingWhiteboard" class="preview-actions">
               <Button block icon-left="send" @tap="pushWhiteboardToScreen">推送到大屏</Button>
               <Button variant="secondary" block icon-left="x" @tap="discardWhiteboardPreview">放弃预览</Button>
+              <Button variant="secondary" block icon-left="x" @tap="hideWhiteboard">隐藏大屏板书</Button>
+            </view>
+          </scroll-view>
+
+          <view class="wb-right-preview" v-if="whiteboardPreview">
+            <view class="wb-preview-head">
+              <text class="wb-preview-badge">预览</text>
+              <text class="wb-preview-title">{{ whiteboardPreview.title || whiteboardPreview.topic || '板书' }}</text>
+              <text v-if="whiteboardPreview.subtitle" class="wb-preview-subtitle">{{ whiteboardPreview.subtitle }}</text>
+            </view>
+            <scroll-view class="wb-preview-body" scroll-y>
+              <view
+                v-for="(item, idx) in (whiteboardPreview.items || [])"
+                :key="idx"
+                class="wb-preview-item"
+              >
+                <view v-if="item.type === 'heading'" :class="['wb-pv-heading', `level-${Math.min(3, Math.max(1, item.level || 2))}`]">
+                  <text>{{ item.text }}</text>
+                </view>
+                <text v-else-if="item.type === 'text'" class="wb-pv-text">{{ item.text }}</text>
+                <view v-else-if="item.type === 'latex'" :class="['wb-pv-latex', item.display ? 'display' : 'inline']">
+                  <text class="wb-pv-latex-text">{{ item.tex }}</text>
+                </view>
+                <view v-else-if="item.type === 'list'" class="wb-pv-list">
+                  <view v-for="(li, liIdx) in item.items" :key="liIdx" class="wb-pv-list-item">
+                    <text class="wb-pv-list-marker">{{ item.ordered ? `${liIdx + 1}.` : '•' }}</text>
+                    <text>{{ li }}</text>
+                  </view>
+                </view>
+                <view v-else-if="item.type === 'table'" class="wb-pv-table-wrap">
+                  <view class="wb-pv-table-row wb-pv-thead">
+                    <text v-for="(h, hi) in item.headers" :key="hi" class="wb-pv-table-cell wb-pv-th">{{ h }}</text>
+                  </view>
+                  <view v-for="(row, ri) in item.rows" :key="ri" class="wb-pv-table-row">
+                    <text v-for="(cell, ci) in row" :key="ci" class="wb-pv-table-cell">{{ cell }}</text>
+                  </view>
+                </view>
+                <view v-else-if="item.type === 'callout'" :class="['wb-pv-callout', `kind-${item.kind || 'info'}`]">
+                  <text class="wb-pv-callout-icon">{{ { tip: '💡', warning: '⚠️', note: '📝' }[item.kind || ''] || 'ℹ️' }}</text>
+                  <text class="wb-pv-callout-text">{{ item.text }}</text>
+                </view>
+                <view v-else-if="item.type === 'image'" class="wb-pv-image">
+                  <text class="wb-pv-image-label">[SVG 图]</text>
+                </view>
+                <view v-else class="wb-pv-unknown">
+                  <text>{{ JSON.stringify(item).slice(0, 80) }}</text>
+                </view>
+              </view>
+            </scroll-view>
+            <view class="wb-preview-footer">
+              <text>共 {{ (whiteboardPreview.items || []).length }} 项</text>
             </view>
           </view>
-
-          <Button variant="secondary" block icon-left="x" @tap="hideWhiteboard">关闭大屏板书</Button>
         </view>
 
         <view v-else-if="activePanel === 'paper'" class="form">
@@ -795,6 +839,112 @@
             <text>{{ student.name }}</text>
           </button>
         </view>
+      </view>
+    </view>
+
+    <!-- AI 板书全屏演示 -->
+    <view v-if="whiteboardPresenting" class="wb-presenter">
+      <view class="wb-presenter-header">
+        <view class="wb-presenter-badge-row">
+          <view class="wb-presenter-badge">
+            <Icon name="sparkles" size="xs" />
+            <text>AI 板书</text>
+          </view>
+          <view class="wb-presenter-actions">
+            <button
+              class="wb-pen-toggle"
+              :class="{ active: wbPenActive }"
+              @tap="wbPenActive = !wbPenActive"
+            >
+              <Icon name="pen-tool" size="sm" />
+              <text>{{ wbPenActive ? '退出画笔' : '画笔' }}</text>
+            </button>
+            <button class="wb-presenter-close" @tap="whiteboardPresenting = null; wbPenActive = false">
+              <Icon name="x" size="md" />
+            </button>
+          </view>
+        </view>
+        <text class="wb-presenter-title">{{ whiteboardPresenting.title }}</text>
+        <text v-if="whiteboardPresenting.subtitle" class="wb-presenter-subtitle">{{ whiteboardPresenting.subtitle }}</text>
+      </view>
+
+      <!-- 画笔工具栏 -->
+      <view v-if="wbPenActive" class="wbp-pen-toolbar">
+        <view class="wbp-pen-colors">
+          <button
+            v-for="c in ['#ef4444', '#facc15', '#22c55e', '#3b82f6', '#ffffff']"
+            :key="c"
+            class="wbp-pen-color"
+            :class="{ active: wbPenColor === c }"
+            :style="{ background: c, borderColor: c === '#ffffff' ? '#ccc' : c }"
+            @tap="wbPenColor = c"
+          ></button>
+        </view>
+        <view class="wbp-pen-widths">
+          <button
+            v-for="w in [2, 4, 8]"
+            :key="w"
+            class="wbp-pen-width"
+            :class="{ active: wbPenWidth === w }"
+            @tap="wbPenWidth = w"
+          >
+            <view class="wbp-pen-width-dot" :style="{ width: (w * 3) + 'rpx', height: (w * 3) + 'rpx', background: wbPenColor }"></view>
+          </button>
+        </view>
+        <button class="wbp-pen-clear" @tap="clearWbPenCanvas">
+          <Icon name="trash-2" size="sm" />
+          <text>清除</text>
+        </button>
+      </view>
+
+      <view class="wb-presenter-content">
+        <scroll-view class="wb-presenter-body" scroll-y :scroll-with-animation="true" :enable-flex="true">
+          <view v-for="(item, idx) in whiteboardPresenting.items" :key="idx" class="wb-presenter-item">
+            <view v-if="item.type === 'heading'" :class="['wbp-heading', `level-${Math.min(3, Math.max(1, item.level || 2))}`]">
+              <text>{{ item.text }}</text>
+            </view>
+            <text v-else-if="item.type === 'text'" class="wbp-text">{{ item.text }}</text>
+            <view v-else-if="item.type === 'latex'" :class="['wbp-latex', item.display ? 'display' : 'inline']">
+              <text class="wbp-latex-text">{{ item.tex }}</text>
+            </view>
+            <view v-else-if="item.type === 'list'" class="wbp-list">
+              <view v-for="(li, liIdx) in item.items" :key="liIdx" class="wbp-list-item">
+                <text class="wbp-list-marker">{{ item.ordered ? `${liIdx + 1}.` : '•' }}</text>
+                <text class="wbp-list-content">{{ li }}</text>
+              </view>
+            </view>
+            <view v-else-if="item.type === 'table'" class="wbp-table-wrap">
+              <view class="wbp-table-row wbp-thead">
+                <text v-for="(h, hi) in item.headers" :key="hi" class="wbp-table-cell wbp-th">{{ h }}</text>
+              </view>
+              <view v-for="(row, ri) in item.rows" :key="ri" class="wbp-table-row">
+                <text v-for="(cell, ci) in row" :key="ci" class="wbp-table-cell">{{ cell }}</text>
+              </view>
+            </view>
+            <view v-else-if="item.type === 'callout'" :class="['wbp-callout', `kind-${item.kind || 'info'}`]">
+              <text class="wbp-callout-icon">{{ { tip: '💡', warning: '⚠️', note: '📝' }[item.kind || ''] || 'ℹ️' }}</text>
+              <text class="wbp-callout-text">{{ item.text }}</text>
+            </view>
+            <view v-else-if="item.type === 'image'" class="wbp-image">
+              <text class="wbp-image-label">[SVG 图 — 详见大屏]</text>
+            </view>
+          </view>
+        </scroll-view>
+
+        <!-- 画笔 canvas 覆盖层 -->
+        <canvas
+          v-if="wbPenActive"
+          canvas-id="wb-pen-canvas"
+          class="wbp-canvas-overlay"
+          disable-scroll
+          @touchstart="onWbPenStart"
+          @touchmove="onWbPenMove"
+          @touchend="onWbPenEnd"
+        />
+      </view>
+
+      <view class="wb-presenter-footer">
+        <text>共 {{ whiteboardPresenting.items.length }} 项 · AI 生成</text>
       </view>
     </view>
 
@@ -921,6 +1071,61 @@ const whiteboardHint = ref('')
 const isGeneratingWhiteboard = ref(false)
 const whiteboardGenChars = ref(0)
 const whiteboardPreview = ref<{ topic?: string; title?: string; subtitle?: string; items?: any[]; generatedAt?: string } | null>(null)
+const whiteboardPresenting = ref<{ title: string; subtitle?: string; items: any[] } | null>(null)
+const wbPenActive = ref(false)
+const wbPenColor = ref('#ef4444')
+const wbPenWidth = ref(4)
+let wbPenCtx: UniApp.CanvasContext | null = null
+let wbPenDrawing = false
+
+let wbPenPoints: Array<{ x: number; y: number }> = []
+
+function onWbPenStart(e: any) {
+  if (!wbPenActive.value) return
+  const touch = e?.touches?.[0] || e?.changedTouches?.[0]
+  if (!touch) return
+  wbPenDrawing = true
+  wbPenPoints = [{ x: touch.x, y: touch.y }]
+  if (!wbPenCtx) wbPenCtx = uni.createCanvasContext('wb-pen-canvas')
+  wbPenCtx.setStrokeStyle(wbPenColor.value)
+  wbPenCtx.setLineWidth(wbPenWidth.value)
+  wbPenCtx.setLineCap('round')
+  wbPenCtx.setLineJoin('round')
+  wbPenCtx.beginPath()
+  wbPenCtx.moveTo(touch.x, touch.y)
+}
+
+function onWbPenMove(e: any) {
+  if (!wbPenDrawing || !wbPenCtx) return
+  const touch = e?.touches?.[0] || e?.changedTouches?.[0]
+  if (!touch) return
+  wbPenPoints.push({ x: touch.x, y: touch.y })
+  wbPenCtx.lineTo(touch.x, touch.y)
+  wbPenCtx.stroke()
+  wbPenCtx.draw(true)
+  wbPenCtx.beginPath()
+  wbPenCtx.moveTo(touch.x, touch.y)
+}
+
+function onWbPenEnd() {
+  if (!wbPenDrawing) return
+  wbPenDrawing = false
+  if (wbPenPoints.length > 1) {
+    emit(RoomEvent.AiWhiteboardStroke, {
+      color: wbPenColor.value,
+      width: wbPenWidth.value,
+      points: wbPenPoints,
+    })
+  }
+  wbPenPoints = []
+}
+
+function clearWbPenCanvas() {
+  if (!wbPenCtx) wbPenCtx = uni.createCanvasContext('wb-pen-canvas')
+  wbPenCtx.clearRect(0, 0, 9999, 9999)
+  wbPenCtx.draw()
+  emit(RoomEvent.AiWhiteboardClear)
+}
 const isGeneratingAiPractice = ref(false)
 const aiPracticeGenChars = ref(0)
 const aiPracticePreview = ref<{ topic?: string; title?: string; description?: string; html?: string; sanitizeStats?: any; generatedAt?: string } | null>(null)
@@ -2781,7 +2986,13 @@ function pushWhiteboardToScreen() {
     return
   }
   emit(RoomEvent.AiWhiteboardShow, whiteboardPreview.value)
-  toast('已推送到大屏', 'success')
+  whiteboardPresenting.value = {
+    title: whiteboardPreview.value.title || whiteboardPreview.value.topic || '板书',
+    subtitle: whiteboardPreview.value.subtitle,
+    items: whiteboardPreview.value.items,
+  }
+  toast('已推送到大屏和学生端', 'success')
+  closePanel()
 }
 
 function discardWhiteboardPreview() {
@@ -2790,6 +3001,7 @@ function discardWhiteboardPreview() {
 
 function hideWhiteboard() {
   emit(RoomEvent.AiWhiteboardHide)
+  whiteboardPresenting.value = null
   toast('已通知大屏关闭板书', 'success')
 }
 
@@ -3599,6 +3811,39 @@ function stateText(state: StudentInfo['state']) {
   border-radius: var(--radius-2xl);
   background: var(--color-surface-raised);
   box-shadow: var(--elevation-5);
+}
+
+.modal-card-wide {
+  max-width: 1280rpx;
+  padding: 0;
+  overflow: hidden;
+  border: 2rpx solid rgba(47, 107, 255, 0.12);
+  background:
+    radial-gradient(circle at 12% 0%, rgba(124, 77, 255, 0.12), transparent 34%),
+    radial-gradient(circle at 88% 8%, rgba(32, 165, 70, 0.10), transparent 32%),
+    linear-gradient(180deg, #fbfdff 0%, var(--color-surface-raised) 46%, #f7faff 100%);
+  box-shadow: 0 32rpx 90rpx rgba(15, 38, 92, 0.22);
+}
+
+.modal-card-wide .modal-head {
+  margin: 0;
+  padding: var(--space-5) var(--space-5) var(--space-4);
+  border-bottom: 2rpx solid rgba(47, 107, 255, 0.10);
+  background:
+    linear-gradient(135deg, rgba(47, 107, 255, 0.08), rgba(124, 77, 255, 0.08)),
+    rgba(255, 255, 255, 0.78);
+}
+
+.modal-card-wide .modal-title {
+  font-size: var(--font-title-md);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  letter-spacing: 1rpx;
+}
+
+.modal-card-wide .close-btn {
+  background: rgba(47, 107, 255, 0.08);
+  border: 2rpx solid rgba(47, 107, 255, 0.08);
 }
 
 .modal-card:has(.quiz-two-col) {
@@ -4697,15 +4942,120 @@ function stateText(state: StudentInfo['state']) {
 }
 
 /* ===== AI 板书 / AI 实践 · 预览卡片 ===== */
+.ai-practice-layout {
+  display: flex;
+  gap: var(--space-5);
+  min-height: 0;
+  width: 100%;
+  padding: var(--space-5);
+  box-sizing: border-box;
+}
+
+.ai-practice-left {
+  flex: 0 0 420rpx;
+  width: 420rpx;
+  min-width: 340rpx;
+  padding: var(--space-4);
+  border: 2rpx solid rgba(124, 77, 255, 0.12);
+  border-radius: var(--radius-xl);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 246, 255, 0.94)),
+    var(--color-surface);
+  box-shadow: 0 18rpx 52rpx rgba(124, 77, 255, 0.10);
+}
+
+.ai-practice-right {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.ai-practice-panel {
+  gap: var(--space-4);
+}
+
+.ai-practice-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  padding: var(--space-4);
+  border: 2rpx solid rgba(124, 77, 255, 0.14);
+  border-radius: var(--radius-xl);
+  background:
+    radial-gradient(circle at 90% 0%, rgba(124, 77, 255, 0.16), transparent 36%),
+    linear-gradient(135deg, rgba(47, 107, 255, 0.08), rgba(124, 77, 255, 0.06));
+}
+
+.ai-practice-kicker {
+  align-self: flex-start;
+  padding: 6rpx 18rpx;
+  border-radius: var(--radius-pill);
+  background: rgba(124, 77, 255, 0.12);
+  color: #5f43d8;
+  font-size: var(--font-overline);
+  font-weight: var(--font-weight-bold);
+}
+
+.ai-practice-title {
+  color: var(--color-text-primary);
+  font-size: var(--font-title-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.3;
+}
+
+.ai-practice-desc {
+  color: var(--color-text-secondary);
+  font-size: var(--font-caption);
+  line-height: var(--line-height-normal);
+}
+
+.ai-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.ai-field-label {
+  color: var(--color-text-primary);
+  font-size: var(--font-caption);
+  font-weight: var(--font-weight-bold);
+}
+
+.ai-practice-panel .input,
+.ai-practice-panel .textarea {
+  border-color: rgba(124, 77, 255, 0.16);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: inset 0 2rpx 8rpx rgba(15, 38, 92, 0.03);
+}
+
+.ai-practice-panel .textarea {
+  min-height: 170rpx;
+}
+
+.ai-practice-panel .gen-progress {
+  padding: var(--space-3);
+  border: 2rpx solid rgba(124, 77, 255, 0.14);
+  border-radius: var(--radius-lg);
+  background: rgba(124, 77, 255, 0.06);
+}
+
 .preview-card {
   margin-top: var(--space-3);
   padding: var(--space-4);
-  background: linear-gradient(135deg, rgba(47, 107, 255, 0.04), rgba(124, 77, 255, 0.04));
-  border: 2rpx solid rgba(47, 107, 255, 0.18);
-  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 255, 0.96));
+  border: 2rpx solid rgba(47, 107, 255, 0.14);
+  border-radius: var(--radius-xl);
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  box-shadow: 0 16rpx 46rpx rgba(47, 107, 255, 0.10);
+}
+
+.ai-practice-preview-card {
+  width: 100%;
+  margin-top: 0;
+  min-height: 520rpx;
 }
 
 .preview-card-head {
@@ -4716,12 +5066,13 @@ function stateText(state: StudentInfo['state']) {
 
 .preview-card-badge {
   flex-shrink: 0;
-  padding: 4rpx 16rpx;
+  padding: 6rpx 18rpx;
   font-size: var(--font-overline);
   font-weight: var(--font-weight-bold);
-  background: rgba(47, 107, 255, 0.12);
-  color: var(--color-primary);
-  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, var(--color-primary), #7c4dff);
+  color: #fff;
+  border-radius: var(--radius-pill);
+  box-shadow: 0 8rpx 20rpx rgba(47, 107, 255, 0.18);
 }
 
 .preview-card-title {
@@ -4789,12 +5140,12 @@ function stateText(state: StudentInfo['state']) {
 }
 
 .preview-meta-chip {
-  padding: 4rpx 16rpx;
+  padding: 6rpx 18rpx;
   font-size: var(--font-caption);
-  background: var(--color-surface);
-  border: 2rpx solid var(--color-outline-variant);
+  background: rgba(47, 107, 255, 0.06);
+  border: 2rpx solid rgba(47, 107, 255, 0.12);
   border-radius: var(--radius-pill);
-  color: var(--color-text-secondary);
+  color: var(--color-primary);
 }
 
 .preview-meta-chip.warn {
@@ -4804,8 +5155,11 @@ function stateText(state: StudentInfo['state']) {
 }
 
 .preview-hint {
+  padding: var(--space-3);
+  border-radius: var(--radius-lg);
+  background: rgba(15, 38, 92, 0.04);
   font-size: var(--font-caption);
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
   line-height: var(--line-height-normal);
 }
 
@@ -4835,6 +5189,665 @@ function stateText(state: StudentInfo['state']) {
   background: var(--color-surface);
   font-size: var(--font-body);
   text-align: left;
+}
+
+/* ===== AI 板书 · 全屏演示 ===== */
+.wb-presenter {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  background: linear-gradient(180deg, #fdfdfd 0%, #f5f7fa 100%);
+  display: flex;
+  flex-direction: column;
+  animation: wbPresenterIn 0.3s ease;
+}
+
+@keyframes wbPresenterIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.wb-presenter-header {
+  padding: var(--space-4) var(--space-6);
+  padding-top: max(var(--space-4), var(--safe-top));
+  border-bottom: 4rpx solid rgba(47, 107, 255, 0.12);
+  background: linear-gradient(135deg, rgba(47, 107, 255, 0.04), rgba(124, 77, 255, 0.04));
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.wb-presenter-badge-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.wb-presenter-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 8rpx 20rpx;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(135deg, var(--color-primary), #7c4dff);
+  color: #fff;
+  font-size: var(--font-caption);
+  font-weight: var(--font-weight-bold);
+}
+
+.wb-presenter-close {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wb-presenter-title {
+  font-size: 48rpx;
+  font-weight: 800;
+  color: #1a1a1a;
+}
+
+.wb-presenter-subtitle {
+  font-size: var(--font-body);
+  color: var(--color-text-secondary);
+}
+
+.wb-presenter-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.wb-pen-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 8rpx 20rpx;
+  border-radius: var(--radius-pill);
+  border: 2rpx solid var(--color-outline);
+  background: var(--color-surface);
+  font-size: var(--font-caption);
+  color: var(--color-text-primary);
+}
+.wb-pen-toggle.active {
+  background: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+}
+
+.wbp-pen-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 8rpx var(--space-6);
+  background: var(--color-surface);
+  border-bottom: 2rpx solid var(--color-outline-variant);
+  flex-shrink: 0;
+}
+
+.wbp-pen-colors {
+  display: flex;
+  gap: 10rpx;
+}
+.wbp-pen-color {
+  width: 40rpx;
+  height: 40rpx;
+  border-radius: 50%;
+  border: 4rpx solid transparent;
+  padding: 0;
+}
+.wbp-pen-color.active {
+  border-color: var(--color-text-primary);
+  box-shadow: 0 0 0 3rpx rgba(0, 0, 0, 0.1);
+}
+
+.wbp-pen-widths {
+  display: flex;
+  gap: 8rpx;
+}
+.wbp-pen-width {
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2rpx solid var(--color-outline-variant);
+  background: var(--color-surface);
+  padding: 0;
+}
+.wbp-pen-width.active {
+  border-color: var(--color-primary);
+  background: rgba(47, 107, 255, 0.08);
+}
+.wbp-pen-width-dot {
+  border-radius: 50%;
+}
+
+.wbp-pen-clear {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  padding: 6rpx 16rpx;
+  border-radius: var(--radius-pill);
+  border: 2rpx solid var(--color-outline);
+  background: var(--color-surface);
+  font-size: var(--font-caption);
+  color: var(--color-text-secondary);
+  margin-left: auto;
+}
+
+.wb-presenter-content {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+}
+
+.wb-presenter-body {
+  position: absolute;
+  inset: 0;
+  padding: var(--space-5) var(--space-7);
+}
+
+.wbp-canvas-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  width: 100%;
+  height: 100%;
+}
+
+.wb-presenter-item {
+  margin-bottom: var(--space-5);
+  word-break: break-word;
+}
+
+.wbp-heading {
+  font-weight: var(--font-weight-bold);
+}
+.wbp-heading.level-1 {
+  font-size: 44rpx;
+  color: #1a1a1a;
+  padding-bottom: 12rpx;
+  border-bottom: 6rpx solid var(--color-primary);
+}
+.wbp-heading.level-2 {
+  font-size: 36rpx;
+  color: var(--color-primary);
+}
+.wbp-heading.level-3 {
+  font-size: 30rpx;
+  color: #7c4dff;
+}
+
+.wbp-text {
+  font-size: 30rpx;
+  line-height: 1.8;
+  color: #262626;
+  white-space: pre-wrap;
+}
+
+.wbp-latex {
+  font-family: 'Cambria Math', 'Times New Roman', serif;
+}
+.wbp-latex.display {
+  text-align: center;
+  padding: var(--space-4);
+  background: rgba(124, 77, 255, 0.06);
+  border-radius: var(--radius-lg);
+  border-left: 6rpx solid #7c4dff;
+}
+.wbp-latex-text {
+  font-size: 34rpx;
+  color: #1a1a1a;
+}
+
+.wbp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+  padding-left: 8rpx;
+}
+.wbp-list-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12rpx;
+}
+.wbp-list-marker {
+  font-size: 30rpx;
+  color: var(--color-primary);
+  font-weight: var(--font-weight-bold);
+  flex-shrink: 0;
+}
+.wbp-list-content {
+  font-size: 30rpx;
+  line-height: 1.7;
+  color: #262626;
+}
+
+.wbp-table-wrap {
+  border: 2rpx solid var(--color-outline-variant);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.wbp-table-row {
+  display: flex;
+  border-bottom: 2rpx solid var(--color-outline-variant);
+}
+.wbp-table-row:last-child { border-bottom: none; }
+.wbp-thead {
+  background: linear-gradient(135deg, rgba(47, 107, 255, 0.08), #f0f5ff);
+}
+.wbp-table-cell {
+  flex: 1;
+  padding: 18rpx 24rpx;
+  font-size: 26rpx;
+  color: #262626;
+}
+.wbp-th {
+  font-weight: var(--font-weight-bold);
+  color: var(--color-primary);
+}
+
+.wbp-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 16rpx;
+  padding: 24rpx 28rpx;
+  border-radius: var(--radius-lg);
+  border-left: 6rpx solid;
+  font-size: 28rpx;
+  line-height: 1.7;
+}
+.wbp-callout.kind-tip { background: rgba(82, 196, 26, 0.06); border-left-color: #52c41a; }
+.wbp-callout.kind-warning { background: rgba(250, 140, 22, 0.06); border-left-color: #fa8c16; }
+.wbp-callout.kind-info { background: rgba(22, 119, 255, 0.06); border-left-color: var(--color-primary); }
+.wbp-callout.kind-note { background: rgba(235, 47, 150, 0.06); border-left-color: #eb2f96; }
+.wbp-callout-icon { font-size: 32rpx; flex-shrink: 0; }
+.wbp-callout-text {
+  color: #262626;
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.wbp-image {
+  padding: var(--space-4);
+  background: #fff;
+  border-radius: var(--radius-lg);
+  border: 2rpx dashed var(--color-outline-variant);
+  text-align: center;
+}
+.wbp-image-label {
+  font-size: var(--font-caption);
+  color: var(--color-text-tertiary);
+}
+
+.wb-presenter-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16rpx;
+  padding-bottom: max(16rpx, var(--safe-bottom));
+  border-top: 2rpx solid var(--color-outline-variant);
+  font-size: var(--font-caption);
+  color: var(--color-text-secondary);
+}
+
+/* ===== AI 板书 · 左右分栏布局 ===== */
+.wb-split-layout {
+  display: flex;
+  gap: var(--space-5);
+  min-height: 0;
+  width: 100%;
+  height: calc(85vh - 150rpx);
+  max-height: 920rpx;
+  padding: var(--space-5);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.wb-left-form {
+  flex: 0 0 370rpx;
+  width: 370rpx;
+  min-width: 320rpx;
+  height: 100%;
+  max-height: 100%;
+  padding: var(--space-4);
+  padding-bottom: calc(var(--space-4) + var(--safe-bottom));
+  border: 2rpx solid rgba(47, 107, 255, 0.12);
+  border-radius: var(--radius-xl);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 255, 0.94)),
+    var(--color-surface);
+  box-shadow: 0 18rpx 52rpx rgba(47, 107, 255, 0.10);
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+.wb-left-form .input,
+.wb-left-form .textarea {
+  border-color: rgba(47, 107, 255, 0.16);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: inset 0 2rpx 8rpx rgba(15, 38, 92, 0.03);
+}
+
+.wb-left-form .textarea {
+  min-height: 150rpx;
+}
+
+.wb-left-form .chip-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10rpx;
+  margin-top: 2rpx;
+}
+
+.wb-left-form .chip {
+  width: 100%;
+  min-height: 64rpx;
+  margin: 0;
+  padding: 0 22rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2rpx solid rgba(47, 107, 255, 0.14);
+  border-radius: var(--radius-pill);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(241, 246, 255, 0.96));
+  color: #315bdc;
+  font-size: var(--font-caption);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.35;
+  text-align: center;
+  box-shadow: 0 6rpx 16rpx rgba(47, 107, 255, 0.07);
+}
+
+.wb-left-form .chip::after {
+  border: none;
+}
+
+.wb-left-form .chip:active {
+  transform: scale(0.98);
+}
+
+.wb-left-form .gen-progress {
+  padding: var(--space-3);
+  border: 2rpx solid rgba(47, 107, 255, 0.12);
+  border-radius: var(--radius-lg);
+  background: rgba(47, 107, 255, 0.06);
+}
+
+.wb-left-form .preview-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-lg);
+  background: rgba(32, 165, 70, 0.06);
+  border: 2rpx solid rgba(32, 165, 70, 0.12);
+}
+
+.wb-right-preview {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background:
+    linear-gradient(90deg, rgba(47, 107, 255, 0.035) 1rpx, transparent 1rpx),
+    linear-gradient(180deg, rgba(47, 107, 255, 0.035) 1rpx, transparent 1rpx),
+    linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
+  background-size: 34rpx 34rpx, 34rpx 34rpx, auto;
+  border: 2rpx solid rgba(47, 107, 255, 0.16);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  max-height: 100%;
+  box-shadow: 0 20rpx 70rpx rgba(15, 38, 92, 0.12);
+}
+
+.wb-preview-head {
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 2rpx solid rgba(47, 107, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.wb-preview-badge {
+  align-self: flex-start;
+  padding: 6rpx 18rpx;
+  font-size: var(--font-overline);
+  font-weight: var(--font-weight-bold);
+  background: linear-gradient(135deg, var(--color-primary), #7c4dff);
+  color: #fff;
+  border-radius: var(--radius-pill);
+  box-shadow: 0 8rpx 22rpx rgba(47, 107, 255, 0.20);
+}
+
+.wb-preview-title {
+  font-size: var(--font-title-md);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  word-break: break-word;
+}
+
+.wb-preview-subtitle {
+  font-size: var(--font-caption);
+  color: var(--color-text-secondary);
+}
+
+.wb-preview-body {
+  flex: 1;
+  padding: var(--space-5);
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.wb-preview-item {
+  margin-bottom: var(--space-3);
+  padding: var(--space-3);
+  border: 2rpx solid rgba(47, 107, 255, 0.08);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 10rpx 28rpx rgba(15, 38, 92, 0.06);
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.wb-pv-heading {
+  font-weight: var(--font-weight-bold);
+}
+.wb-pv-heading.level-1 {
+  font-size: var(--font-title-md);
+  color: var(--color-text-primary);
+  padding-bottom: 8rpx;
+  border-bottom: 4rpx solid rgba(47, 107, 255, 0.22);
+  margin-bottom: 4rpx;
+}
+.wb-pv-heading.level-2 {
+  font-size: var(--font-title-sm);
+  color: var(--color-primary);
+}
+.wb-pv-heading.level-3 {
+  font-size: var(--font-body);
+  color: #7c4dff;
+}
+
+.wb-pv-text {
+  font-size: var(--font-body);
+  line-height: var(--line-height-normal);
+  color: var(--color-text-primary);
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.wb-pv-latex {
+  font-family: 'Cambria Math', 'Times New Roman', serif;
+}
+.wb-pv-latex.display {
+  text-align: center;
+  padding: var(--space-4);
+  background: linear-gradient(135deg, rgba(124, 77, 255, 0.08), rgba(47, 107, 255, 0.05));
+  border-radius: var(--radius-lg);
+  border-left: 4rpx solid #7c4dff;
+}
+.wb-pv-latex-text {
+  font-size: var(--font-body);
+  color: var(--color-text-primary);
+}
+
+.wb-pv-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+.wb-pv-list-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8rpx;
+  font-size: var(--font-body);
+  color: var(--color-text-primary);
+}
+.wb-pv-list-marker {
+  color: var(--color-primary);
+  font-weight: var(--font-weight-bold);
+  flex-shrink: 0;
+}
+
+.wb-pv-table-wrap {
+  border: 2rpx solid var(--color-outline-variant);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: #fff;
+}
+.wb-pv-table-row {
+  display: flex;
+  border-bottom: 2rpx solid var(--color-outline-variant);
+}
+.wb-pv-table-row:last-child {
+  border-bottom: none;
+}
+.wb-pv-thead {
+  background: linear-gradient(135deg, rgba(47, 107, 255, 0.08), rgba(240, 245, 255, 1));
+}
+.wb-pv-table-cell {
+  flex: 1;
+  padding: 10rpx 14rpx;
+  font-size: var(--font-caption);
+  color: var(--color-text-primary);
+}
+.wb-pv-th {
+  font-weight: var(--font-weight-bold);
+  color: var(--color-primary);
+}
+
+.wb-pv-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 10rpx;
+  padding: 14rpx 18rpx;
+  border-radius: var(--radius-lg);
+  border-left: 4rpx solid;
+  font-size: var(--font-body);
+}
+.wb-pv-callout.kind-tip { background: rgba(32, 165, 70, 0.06); border-left-color: #52c41a; }
+.wb-pv-callout.kind-warning { background: rgba(245, 166, 35, 0.06); border-left-color: #fa8c16; }
+.wb-pv-callout.kind-info { background: rgba(47, 107, 255, 0.06); border-left-color: var(--color-primary); }
+.wb-pv-callout.kind-note { background: rgba(235, 47, 150, 0.06); border-left-color: #eb2f96; }
+.wb-pv-callout-icon { font-size: 24rpx; flex-shrink: 0; }
+.wb-pv-callout-text { color: var(--color-text-primary); line-height: var(--line-height-normal); word-break: break-word; flex: 1; min-width: 0; }
+
+.wb-pv-image {
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  border: 2rpx dashed var(--color-outline-variant);
+  text-align: center;
+}
+.wb-pv-image-label {
+  font-size: var(--font-caption);
+  color: var(--color-text-tertiary);
+}
+
+.wb-pv-unknown {
+  padding: 8rpx;
+  background: rgba(255, 77, 79, 0.06);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-caption);
+  color: var(--color-text-tertiary);
+}
+
+.wb-streaming-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  background: rgba(47, 107, 255, 0.06);
+  font-size: var(--font-caption);
+  color: var(--color-primary);
+}
+
+.wb-streaming-dot {
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  background: var(--color-primary);
+  animation: wbPulse 1.2s ease infinite;
+}
+
+@keyframes wbPulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+
+.wb-preview-footer {
+  padding: 12rpx var(--space-5);
+  border-top: 2rpx solid rgba(47, 107, 255, 0.1);
+  font-size: var(--font-caption);
+  color: var(--color-text-tertiary);
+  text-align: center;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+@media (max-width: 700px) {
+  .modal-card-wide {
+    max-height: calc(92vh - var(--safe-bottom));
+  }
+
+  .wb-split-layout {
+    flex-direction: column;
+    padding: var(--space-4);
+  }
+
+  .ai-practice-layout {
+    flex-direction: column;
+    padding: var(--space-4);
+  }
+
+  .wb-left-form {
+    width: auto;
+    min-width: 0;
+    flex: none;
+  }
+
+  .ai-practice-left {
+    width: auto;
+    min-width: 0;
+    flex: none;
+  }
+
+  .wb-right-preview {
+    max-height: 560rpx;
+  }
 }
 
 @media (min-width: 900px) {

@@ -258,6 +258,7 @@
 
     <AiWhiteboard
       v-if="aiWhiteboard"
+      ref="aiWhiteboardRef"
       :board="aiWhiteboard"
       @close="aiWhiteboard = null"
     />
@@ -281,6 +282,7 @@ interface AiWhiteboardPayload {
 }
 
 const aiWhiteboard = ref<AiWhiteboardPayload | null>(null)
+const aiWhiteboardRef = ref<InstanceType<typeof AiWhiteboard> | null>(null)
 
 /* ===== 蒙版涂鸦（只读，跟随教师端） ===== */
 interface AnnoPoint { x: number; y: number }
@@ -692,6 +694,12 @@ const handlers = {
   onAiWhiteboardHide: () => {
     aiWhiteboard.value = null
   },
+  onAiWhiteboardStroke: (data: any) => {
+    aiWhiteboardRef.value?.drawStroke(data)
+  },
+  onAiWhiteboardClear: () => {
+    aiWhiteboardRef.value?.clearCanvas()
+  },
   onLessonEnd: () => {
     store.lessonEnded = true
     store.activeQuiz = null
@@ -798,6 +806,8 @@ onMounted(() => {
   s.on('ai:practice:end', handlers.onAiPracticeEnd)
   s.on('ai:whiteboard:show', handlers.onAiWhiteboardShow)
   s.on('ai:whiteboard:hide', handlers.onAiWhiteboardHide)
+  s.on('ai:whiteboard:stroke', handlers.onAiWhiteboardStroke)
+  s.on('ai:whiteboard:clear', handlers.onAiWhiteboardClear)
   s.on('compete:start', handlers.onCompeteStart)
   s.on('compete:stop', handlers.onCompeteStop)
   s.on('lesson:start', handlers.onLessonStart)
@@ -848,6 +858,8 @@ onUnmounted(() => {
     s.off('ai:practice:end', handlers.onAiPracticeEnd)
     s.off('ai:whiteboard:show', handlers.onAiWhiteboardShow)
     s.off('ai:whiteboard:hide', handlers.onAiWhiteboardHide)
+    s.off('ai:whiteboard:stroke', handlers.onAiWhiteboardStroke)
+    s.off('ai:whiteboard:clear', handlers.onAiWhiteboardClear)
     s.off('compete:start', handlers.onCompeteStart)
     s.off('compete:stop', handlers.onCompeteStop)
     s.off('lesson:start', handlers.onLessonStart)

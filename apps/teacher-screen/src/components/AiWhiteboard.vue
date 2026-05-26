@@ -19,12 +19,15 @@
       </div>
     </div>
 
-    <div class="wb-body" ref="bodyRef">
-      <component
-        v-for="(item, idx) in board.items"
-        :key="idx"
-        :is="renderItem(item, idx)"
-      />
+    <div class="wb-body-wrap">
+      <div class="wb-body" ref="bodyRef">
+        <component
+          v-for="(item, idx) in board.items"
+          :key="idx"
+          :is="renderItem(item, idx)"
+        />
+      </div>
+      <canvas ref="penCanvasRef" class="wb-pen-canvas" />
     </div>
 
     <div class="wb-footer">
@@ -35,7 +38,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, h, type VNode } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, h, type VNode } from 'vue'
 import katex from 'katex'
 import 'katex/dist/katex.min.css'
 
@@ -58,9 +61,40 @@ const props = defineProps<{
   }
 }>()
 
-defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: []; stroke: [data: any]; clear: [] }>()
 
 const bodyRef = ref<HTMLElement | null>(null)
+const penCanvasRef = ref<HTMLCanvasElement | null>(null)
+
+function drawStroke(data: { color: string; width: number; points: Array<{ x: number; y: number }> }) {
+  const canvas = penCanvasRef.value
+  if (!canvas || !data?.points?.length) return
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+  if (canvas.width !== canvas.offsetWidth || canvas.height !== canvas.offsetHeight) {
+    canvas.width = canvas.offsetWidth
+    canvas.height = canvas.offsetHeight
+  }
+  ctx.strokeStyle = data.color
+  ctx.lineWidth = data.width
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.beginPath()
+  ctx.moveTo(data.points[0].x, data.points[0].y)
+  for (let i = 1; i < data.points.length; i++) {
+    ctx.lineTo(data.points[i].x, data.points[i].y)
+  }
+  ctx.stroke()
+}
+
+function clearCanvas() {
+  const canvas = penCanvasRef.value
+  if (!canvas) return
+  const ctx = canvas.getContext('2d')
+  if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height)
+}
+
+defineExpose({ drawStroke, clearCanvas })
 
 const formattedTime = computed(() => {
   const iso = props.board.generatedAt
@@ -214,8 +248,16 @@ onMounted(() => {
   &:hover { background: rgba(0, 0, 0, 0.1); }
 }
 
-.wb-body {
+.wb-body-wrap {
   flex: 1;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.wb-body {
+  position: absolute;
+  inset: 0;
   overflow-y: auto;
   padding: 32px 60px;
   display: flex;
@@ -328,6 +370,15 @@ onMounted(() => {
   color: #cf1322;
   border-radius: 8px;
   font-size: 13px;
+}
+
+.wb-pen-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 10;
+  pointer-events: none;
 }
 
 .wb-footer {
