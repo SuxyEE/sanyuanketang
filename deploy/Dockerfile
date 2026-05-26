@@ -21,6 +21,11 @@ ARG NGINX_VERSION=1.27-alpine
 # ──────────────────────────────────────────────────────────────────────────────
 FROM node:${NODE_VERSION}-alpine AS pnpm
 ARG PNPM_VERSION
+# 可选：覆写 apk 仓库源（中国用 aliyun 镜像，避免 dl-cdn.alpinelinux.org 慢/卡）
+ARG APK_MIRROR=
+RUN if [ -n "$APK_MIRROR" ]; then \
+      sed -i "s|https\\?://dl-cdn\\.alpinelinux\\.org|${APK_MIRROR}|g" /etc/apk/repositories; \
+    fi
 RUN apk add --no-cache git python3 make g++ libc6-compat
 RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 WORKDIR /repo
@@ -31,6 +36,10 @@ WORKDIR /repo
 #   - 用 --filter 把它们排除掉，不下载几百 MB 的 dcloudio 依赖
 # ──────────────────────────────────────────────────────────────────────────────
 FROM pnpm AS deps
+# 可选：覆写 npm registry（中国环境用 https://registry.npmmirror.com/ 提速）
+ARG NPM_REGISTRY=
+RUN if [ -n "$NPM_REGISTRY" ]; then pnpm config set registry "$NPM_REGISTRY"; fi
+
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json .npmrc ./
 COPY packages/shared/package.json packages/shared/
 COPY apps/server/package.json apps/server/
@@ -82,6 +91,10 @@ RUN rm -rf /out/dist && cp -r apps/server/dist /out/dist
 # Stage: server (FINAL) — 运行时镜像，只含 dist + 生产依赖
 # ──────────────────────────────────────────────────────────────────────────────
 FROM node:${NODE_VERSION}-alpine AS server
+ARG APK_MIRROR=
+RUN if [ -n "$APK_MIRROR" ]; then \
+      sed -i "s|https\\?://dl-cdn\\.alpinelinux\\.org|${APK_MIRROR}|g" /etc/apk/repositories; \
+    fi
 RUN apk add --no-cache tini \
  && addgroup -S app && adduser -S -G app app
 WORKDIR /app

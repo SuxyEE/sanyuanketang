@@ -11,7 +11,7 @@ services:
 
   # ────────────────────────────────────────────────────────────────────────
   mysql:
-    image: mysql:8.0
+    image: mysql:8.0-debian
     container_name: snyuan-mysql
     restart: unless-stopped
     command:
@@ -45,6 +45,9 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile
       target: server
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-}
+        APK_MIRROR:   ${APK_MIRROR:-}
     restart: unless-stopped
     depends_on:
       mysql:
@@ -89,6 +92,8 @@ services:
       dockerfile: deploy/Dockerfile
       target: web
       args:
+        NPM_REGISTRY:  ${NPM_REGISTRY:-}
+        APK_MIRROR:    ${APK_MIRROR:-}
         VITE_API_BASE: ${VITE_API_BASE:-/api/v1}
         VITE_WS_URL:   ${VITE_WS_URL:-}
     restart: unless-stopped
