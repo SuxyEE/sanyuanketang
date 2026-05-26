@@ -402,43 +402,48 @@
           <Button block icon-left="send" @tap="sendBroadcast">发送广播</Button>
         </view>
 
-        <view v-else-if="activePanel === 'quiz'" class="form">
-          <view class="segmented">
-            <button :class="{ active: quizMode === 'ai' }" @tap="quizMode = 'ai'">AI 生成</button>
-            <button :class="{ active: quizMode === 'manual' }" @tap="quizMode = 'manual'">手动出题</button>
-          </view>
-          <template v-if="quizMode === 'ai'">
-            <input v-model="quizTopic" class="input" placeholder="知识点，例如：机械臂坐标系" />
-            <view class="option-row">
-              <button v-for="n in [3, 5, 8, 10]" :key="n" class="option-card compact" :class="{ active: quizCount === n }" @tap="quizCount = n">
-                <text>{{ n }} 题</text>
-              </button>
-            </view>
-            <view class="option-row">
-              <button v-for="d in difficultyOptions" :key="d.value" class="option-card compact" :class="{ active: quizDifficulty === d.value }" @tap="quizDifficulty = d.value">
-                <text>{{ d.label }}</text>
-              </button>
-            </view>
-            <Button block icon-left="sparkles" :loading="isGeneratingQuiz" @tap="generateQuiz">AI 自动出题</Button>
-          </template>
-          <template v-else>
-            <input v-model="manualQuizTitle" class="input" placeholder="测验标题" />
+        <view v-else-if="activePanel === 'quiz'" class="form" :class="{ 'quiz-two-col': quizDraft.length > 0 }">
+          <view class="quiz-left">
             <view class="segmented">
-              <button v-for="type in questionTypes" :key="type.value" :class="{ active: manualQuestionType === type.value }" @tap="manualQuestionType = type.value">{{ type.label }}</button>
+              <button :class="{ active: quizMode === 'ai' }" @tap="quizMode = 'ai'">AI 生成</button>
+              <button :class="{ active: quizMode === 'manual' }" @tap="quizMode = 'manual'">手动出题</button>
             </view>
-            <textarea v-model="manualQuestionStem" class="textarea" placeholder="题目内容" />
-            <textarea v-if="manualQuestionType !== 'short_answer' && manualQuestionType !== 'true_false'" v-model="manualQuestionOptions" class="textarea small" placeholder="每行一个选项，例如：&#10;A. 伺服电机&#10;B. 步进电机" />
-            <input v-model="manualQuestionAnswer" class="input" :placeholder="manualQuestionType === 'short_answer' ? '参考答案' : '正确答案，例如 A 或 对'" />
-            <Button variant="secondary" block icon-left="plus" @tap="addManualQuestion">添加题目</Button>
-          </template>
-          <QuestionPreviewList
-            v-if="quizDraft.length > 0"
-            :questions="quizDraft"
-            title="题目预览"
-            :removable="true"
-            @remove="onRemoveQuizDraft"
-          />
-          <Button block icon-left="send" :disabled="quizDraft.length === 0" @tap="pushQuizDraft">下发测验</Button>
+            <template v-if="quizMode === 'ai'">
+              <input v-model="quizTopic" class="input" placeholder="知识点，例如：机械臂坐标系" />
+              <view class="option-row">
+                <button v-for="n in [3, 5, 8, 10]" :key="n" class="option-card compact" :class="{ active: quizCount === n }" @tap="quizCount = n">
+                  <text>{{ n }} 题</text>
+                </button>
+              </view>
+              <view class="option-row">
+                <button v-for="d in difficultyOptions" :key="d.value" class="option-card compact" :class="{ active: quizDifficulty === d.value }" @tap="quizDifficulty = d.value">
+                  <text>{{ d.label }}</text>
+                </button>
+              </view>
+              <Button block icon-left="sparkles" :loading="isGeneratingQuiz" @tap="generateQuiz">AI 自动出题</Button>
+            </template>
+            <template v-else>
+              <input v-model="manualQuizTitle" class="input" placeholder="测验标题" />
+              <view class="segmented">
+                <button v-for="type in questionTypes" :key="type.value" :class="{ active: manualQuestionType === type.value }" @tap="manualQuestionType = type.value">{{ type.label }}</button>
+              </view>
+              <textarea v-model="manualQuestionStem" class="textarea" placeholder="题目内容" />
+              <textarea v-if="manualQuestionType !== 'short_answer' && manualQuestionType !== 'true_false'" v-model="manualQuestionOptions" class="textarea small" placeholder="每行一个选项，例如：&#10;A. 伺服电机&#10;B. 步进电机" />
+              <input v-model="manualQuestionAnswer" class="input" :placeholder="manualQuestionType === 'short_answer' ? '参考答案' : '正确答案，例如 A 或 对'" />
+              <Button variant="secondary" block icon-left="plus" @tap="addManualQuestion">添加题目</Button>
+            </template>
+          </view>
+          <view v-if="quizDraft.length > 0" class="quiz-right">
+            <scroll-view class="quiz-preview-scroll" scroll-y>
+              <QuestionPreviewList
+                :questions="quizDraft"
+                title="题目预览"
+                :removable="true"
+                @remove="onRemoveQuizDraft"
+              />
+            </scroll-view>
+            <Button block icon-left="send" @tap="pushQuizDraft">下发测验</Button>
+          </view>
         </view>
 
         <view v-else-if="activePanel === 'attendance'" class="form">
@@ -3456,11 +3461,18 @@ function stateText(state: StudentInfo['state']) {
 .modal-card {
   width: 100%;
   max-width: 760rpx;
+  max-height: calc(85vh - var(--safe-bottom));
+  overflow-y: auto;
   padding: var(--space-5);
   padding-bottom: calc(var(--space-5) + var(--safe-bottom));
   border-radius: var(--radius-2xl);
   background: var(--color-surface-raised);
   box-shadow: var(--elevation-5);
+}
+
+.modal-card:has(.quiz-two-col) {
+  max-width: 1200rpx;
+  overflow-y: hidden;
 }
 
 .modal-head {
@@ -3487,6 +3499,45 @@ function stateText(state: StudentInfo['state']) {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+}
+
+.form.quiz-two-col {
+  flex-direction: row;
+  align-items: stretch;
+  gap: var(--space-4);
+  max-height: calc(70vh - 120rpx);
+}
+
+.quiz-left {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  flex-shrink: 0;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.form.quiz-two-col .quiz-left {
+  width: 44%;
+  max-width: 520rpx;
+}
+
+.form.quiz-two-col .segmented {
+  flex-wrap: wrap;
+}
+
+.quiz-right {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border-left: 2rpx solid var(--color-outline-variant);
+  padding-left: var(--space-4);
+}
+
+.quiz-preview-scroll {
+  height: calc(62vh - 240rpx);
 }
 
 .segmented {
