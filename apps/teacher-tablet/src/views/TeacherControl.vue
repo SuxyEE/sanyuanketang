@@ -482,6 +482,13 @@ const socketHandlers = {
     activeQuizStatus.value = null
     toastError(data?.message || '测验开始失败')
   },
+  onTaskPushError: (data: { message: string }) => {
+    toastError(data?.message || '任务推送被拒绝（可能存在进行中的活动）')
+  },
+  onAiPracticeStartError: (data: { message: string }) => {
+    if (activeActivity.value === ACTIVITY_FOR_EVENT.ai) activeActivity.value = ''
+    toastError(data?.message || 'AI 实践开启失败（可能存在进行中的活动）')
+  },
   onCompeteStart: (data: { question: string; timeLimit: number; startTime?: number; taskId?: string }) => {
     activeActivity.value = ACTIVITY_FOR_EVENT.compete
     store.setActiveCompete({
@@ -540,9 +547,15 @@ const socketHandlers = {
   onScreenUnlockEvent: () => { isLocked.value = false; store.isLockedShared = false },
   onGroupCreate: (groups: any[]) => {
     toastInfo(`分组已生成（${groups?.length || 0} 组）`)
+    store.setActiveDiscussion({ groups, startedAt: Date.now() })
   },
   onGroupDissolve: () => {
     toastInfo('分组讨论已结束')
+    store.setActiveDiscussion(null)
+  },
+  onAiPracticeEnd: () => {
+    toastInfo('AI 实践已结束')
+    store.setAiPractice(null)
   },
   onBroadcastMsg: (data: { message: string; from?: string }) => {
     const prefix = data?.from ? `[${data.from}] ` : ''
@@ -560,10 +573,15 @@ const socketHandlers = {
     store.setActiveCompete(null)
     store.setActiveAttendance(null)
     store.setAiPractice(null)
+    store.setActiveDiscussion(null)
     store.isLockedShared = false
   },
-  onErrorPermission: (data: { message?: string }) => {
+  onErrorPermission: (data: { code?: string; message?: string }) => {
+    if (data?.code) return
     toastError(data?.message || '没有权限执行此操作')
+  },
+  onJoinError: (data: { message?: string }) => {
+    toastError(data?.message || '加入课堂失败，请先在大屏端展示二维码并完成接管')
   },
 }
 
@@ -592,12 +610,15 @@ onMounted(() => {
   s.on('quiz:grading', socketHandlers.onQuizGrading)
   s.on('quiz:report', socketHandlers.onQuizReport)
   s.on('quiz:start:error', socketHandlers.onQuizStartError)
+  s.on('task:push:error', socketHandlers.onTaskPushError)
+  s.on('ai:practice:start:error', socketHandlers.onAiPracticeStartError)
   s.on('compete:start', socketHandlers.onCompeteStart)
   s.on('compete:stop', socketHandlers.onCompeteStop)
   s.on('compete:answer', socketHandlers.onCompeteAnswer)
   s.on('compete:answer', socketHandlers.onCompeteAnswerToast)
   s.on('roll:call', socketHandlers.onRollCallEcho)
   s.on('ai:practice:start', socketHandlers.onAiPracticeStart)
+  s.on('ai:practice:end', socketHandlers.onAiPracticeEnd)
   s.on('homework:publish', socketHandlers.onHomeworkPublish)
   s.on('screen:lock', socketHandlers.onScreenLockEvent)
   s.on('screen:unlock', socketHandlers.onScreenUnlockEvent)
@@ -606,6 +627,7 @@ onMounted(() => {
   s.on('broadcast:msg', socketHandlers.onBroadcastMsg)
   s.on('lesson:end', socketHandlers.onLessonEnd)
   s.on('error:permission', socketHandlers.onErrorPermission)
+  s.on('room:join:error', socketHandlers.onJoinError)
 })
 
 onUnmounted(() => {
@@ -631,12 +653,15 @@ onUnmounted(() => {
     s.off('quiz:grading', socketHandlers.onQuizGrading)
     s.off('quiz:report', socketHandlers.onQuizReport)
     s.off('quiz:start:error', socketHandlers.onQuizStartError)
+    s.off('task:push:error', socketHandlers.onTaskPushError)
+    s.off('ai:practice:start:error', socketHandlers.onAiPracticeStartError)
     s.off('compete:start', socketHandlers.onCompeteStart)
     s.off('compete:stop', socketHandlers.onCompeteStop)
     s.off('compete:answer', socketHandlers.onCompeteAnswer)
     s.off('compete:answer', socketHandlers.onCompeteAnswerToast)
     s.off('roll:call', socketHandlers.onRollCallEcho)
     s.off('ai:practice:start', socketHandlers.onAiPracticeStart)
+    s.off('ai:practice:end', socketHandlers.onAiPracticeEnd)
     s.off('homework:publish', socketHandlers.onHomeworkPublish)
     s.off('screen:lock', socketHandlers.onScreenLockEvent)
     s.off('screen:unlock', socketHandlers.onScreenUnlockEvent)
@@ -645,6 +670,7 @@ onUnmounted(() => {
     s.off('broadcast:msg', socketHandlers.onBroadcastMsg)
     s.off('lesson:end', socketHandlers.onLessonEnd)
     s.off('error:permission', socketHandlers.onErrorPermission)
+    s.off('room:join:error', socketHandlers.onJoinError)
   }
 })
 

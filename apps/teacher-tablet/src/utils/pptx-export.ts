@@ -153,7 +153,7 @@ export async function exportQuizReportToPPTX(report: QuizReport): Promise<void> 
   // ============ 封面 ============
   const cover = pptx.addSlide()
   cover.background = { color: 'F8FAFD' }
-  cover.addShape(pptx.shapes.RECTANGLE, {
+  cover.addShape(pptx.ShapeType.rect, {
     x: 0, y: 0, w: 13.33, h: 1.2,
     fill: { color: COLORS.primary }, line: { color: COLORS.primary },
   })
@@ -189,7 +189,7 @@ export async function exportQuizReportToPPTX(report: QuizReport): Promise<void> 
   const startX = (13.33 - totalW) / 2
   stats.forEach((s, i) => {
     const x = startX + i * (cardW + cardGap)
-    cover.addShape(pptx.shapes.ROUNDED_RECTANGLE, {
+    cover.addShape(pptx.ShapeType.roundRect, {
       x, y: 4.5, w: cardW, h: 1.6,
       fill: { color: s.bg }, line: { color: s.bg },
       rectRadius: 0.15,
@@ -216,7 +216,7 @@ export async function exportQuizReportToPPTX(report: QuizReport): Promise<void> 
     for (let p = 0; p < kpPages; p++) {
       const slide = pptx.addSlide()
       slide.background = { color: 'FFFFFF' }
-      slide.addShape(pptx.shapes.RECTANGLE, {
+      slide.addShape(pptx.ShapeType.rect, {
         x: 0, y: 0, w: 13.33, h: 0.6,
         fill: { color: COLORS.bgLight }, line: { color: COLORS.bgLight },
       })
@@ -239,13 +239,13 @@ export async function exportQuizReportToPPTX(report: QuizReport): Promise<void> 
           x: 0.5, y, w: 3.5, h: rowH,
           fontFace: FONT, fontSize: 13, color: COLORS.text, bold: true, valign: 'middle',
         })
-        slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, {
+        slide.addShape(pptx.ShapeType.roundRect, {
           x: 4.2, y: y + 0.1, w: barAreaW, h: rowH - 0.2,
           fill: { color: COLORS.border }, line: { color: COLORS.border }, rectRadius: 0.06,
         })
         const color = m.status === 'mastered' ? COLORS.success : m.status === 'practicing' ? COLORS.primary : COLORS.danger
         if (m.masteryPercent > 0) {
-          slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, {
+          slide.addShape(pptx.ShapeType.roundRect, {
             x: 4.2, y: y + 0.1, w: Math.max(0.1, (barAreaW * m.masteryPercent) / 100), h: rowH - 0.2,
             fill: { color }, line: { color }, rectRadius: 0.06,
           })
@@ -269,7 +269,7 @@ export async function exportQuizReportToPPTX(report: QuizReport): Promise<void> 
     slide.background = { color: 'FFFFFF' }
 
     // 顶部条带
-    slide.addShape(pptx.shapes.RECTANGLE, {
+    slide.addShape(pptx.ShapeType.rect, {
       x: 0, y: 0, w: 13.33, h: 0.6,
       fill: { color: COLORS.bgLight }, line: { color: COLORS.bgLight },
     })
@@ -315,7 +315,7 @@ export async function exportQuizReportToPPTX(report: QuizReport): Promise<void> 
         ], { x: 0.5, y, w: 3.5, h: barH, valign: 'middle' })
 
         // 进度条背景
-        slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, {
+        slide.addShape(pptx.ShapeType.roundRect, {
           x: 4.2, y: y + 0.1, w: barAreaW, h: barH - 0.2,
           fill: { color: COLORS.border }, line: { color: COLORS.border },
           rectRadius: 0.05,
@@ -323,7 +323,7 @@ export async function exportQuizReportToPPTX(report: QuizReport): Promise<void> 
         // 进度条填充
         if (pct > 0) {
           const fillW = Math.max(0.1, (barAreaW * pct) / 100)
-          slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, {
+          slide.addShape(pptx.ShapeType.roundRect, {
             x: 4.2, y: y + 0.1, w: fillW, h: barH - 0.2,
             fill: { color: isCorr ? COLORS.success : COLORS.primary },
             line: { color: isCorr ? COLORS.success : COLORS.primary },
@@ -352,7 +352,7 @@ export async function exportQuizReportToPPTX(report: QuizReport): Promise<void> 
       const validAnswers = allValidAnswers.slice(0, 6)
       validAnswers.forEach((ans, i) => {
         const y = 2.2 + i * 0.7
-        slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, {
+        slide.addShape(pptx.ShapeType.roundRect, {
           x: 0.5, y, w: 12.33, h: 0.6,
           fill: { color: COLORS.bgLight }, line: { color: COLORS.bgLight },
           rectRadius: 0.08,
@@ -398,7 +398,7 @@ export async function exportQuizReportToPPTX(report: QuizReport): Promise<void> 
   for (let p = 0; p < pages; p++) {
     const slide = pptx.addSlide()
     slide.background = { color: 'FFFFFF' }
-    slide.addShape(pptx.shapes.RECTANGLE, {
+    slide.addShape(pptx.ShapeType.rect, {
       x: 0, y: 0, w: 13.33, h: 0.6,
       fill: { color: COLORS.bgLight }, line: { color: COLORS.bgLight },
     })

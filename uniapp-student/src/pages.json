@@ -1,0 +1,57 @@
+{
+  "easycom": {
+    "autoscan": true,
+    "custom": {}
+  },
+  "pages": [
+    {
+      "path": "pages/join/index",
+      "style": {
+        "navigationBarTitleText": "加入课堂",
+        "navigationStyle": "custom",
+        "app-plus": {
+          "titleNView": false
+        }
+      }
+    },
+    {
+      "path": "pages/classroom/index",
+      "style": {
+        "navigationBarTitleText": "课堂",
+        "navigationStyle": "custom",
+        "app-plus": {
+          "titleNView": false,
+          "scrollIndicator": "none",
+          "pullToRefresh": { "support": false }
+        }
+      }
+    },
+    {
+      "path": "pages/after-class/index",
+      "style": {
+        "navigationBarTitleText": "课后",
+        "navigationStyle": "custom",
+        "app-plus": {
+          "titleNView": false
+        }
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "三元课堂学生端",
+    "navigationBarBackgroundColor": "#ffffff",
+    "backgroundColor": "#f5f7fa",
+    "app-plus": {
+      "background": "#f5f7fa",
+      "titleNView": false
+    }
+  },
+  "tabBar": {},
+  "preloadRule": {
+    "pages/join/index": {
+      "network": "all",
+      "packages": ["pages/classroom/index"]
+    }
+  }
+}

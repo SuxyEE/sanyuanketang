@@ -8,7 +8,8 @@
     </div>
 
     <div class="quiz-content">
-      <section class="ai-gen-card">
+      <div class="quiz-form-col">
+        <section class="ai-gen-card">
         <div class="ai-gen-head">
           <span class="ai-gen-badge">AI 生成</span>
           <div>
@@ -129,20 +130,17 @@
           <span v-for="kp in kpPreview" :key="kp" class="kp-chip">{{ kp }}</span>
         </div>
       </div>
-
-      <div class="questions-preview" v-if="questionsList.length > 0">
-        <label>已添加题目 ({{ questionsList.length }})</label>
-        <div v-for="(q, idx) in questionsList" :key="idx" class="preview-item">
-          <span class="preview-num">{{ idx + 1 }}</span>
-          <span class="preview-type" :class="q.type">{{ typeLabel(q.type) }}</span>
-          <span v-if="q.points" class="preview-points" :title="`分值 ${q.points} 分`">{{ q.points }} 分</span>
-          <span class="preview-text">{{ q.content.length > 36 ? q.content.slice(0, 36) + '…' : q.content }}</span>
-          <TtsButton :text="buildReadText(q)" />
-          <button class="remove-opt-btn" @click="questionsList.splice(idx, 1)" aria-label="删除题目">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </div>
       </div>
+
+      <aside class="quiz-preview-col">
+        <QuestionPreviewList
+          :questions="questionsList"
+          title="题目预览"
+          :removable="true"
+          :with-tts="true"
+          @remove="onRemoveQuestion"
+        />
+      </aside>
     </div>
 
     <div class="panel-actions">
@@ -160,7 +158,7 @@ import { ref, reactive, computed, onUnmounted } from 'vue'
 import { useSocket } from '../composables/useSocket'
 import { useToast } from '../composables/useToast'
 import { useAiSettings } from '../composables/useAiSettings'
-import TtsButton from './TtsButton.vue'
+import QuestionPreviewList from './QuestionPreviewList.vue'
 
 const emit = defineEmits<{
   close: []
@@ -241,29 +239,9 @@ interface QuestionItem {
 
 const questionsList = ref<QuestionItem[]>([])
 
-function typeLabel(t: string) {
-  const map: Record<string, string> = {
-    single_choice: '单选',
-    multiple_choice: '多选',
-    true_false: '判断',
-    short_answer: '简答',
-  }
-  return map[t] || t
-}
-
-/** 组装"朗读"友好的文本：题干 + 选项 + 必要时朗读答案。 */
-function buildReadText(q: QuestionItem): string {
-  const parts: string[] = []
-  const label = typeLabel(q.type)
-  parts.push(`${label}题。`)
-  parts.push(q.content)
-  if (q.options && q.options.length > 0 && q.type !== 'short_answer') {
-    parts.push(' 选项：')
-    for (const o of q.options) {
-      parts.push(`${o.key}：${o.content}。`)
-    }
-  }
-  return parts.join(' ')
+function onRemoveQuestion(idx: number) {
+  questionsList.value.splice(idx, 1)
+  toastInfo('已删除题目')
 }
 
 function toggleAiType(v: string) {
@@ -456,12 +434,60 @@ function pushQuiz() {
 
 .quiz-content {
   flex: 1;
-  overflow-y: auto;
-  padding: 16px 20px;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  padding: 16px 20px;
+  overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+/* 横屏 / 平板（≥900px）：左右分栏布局
+   - 左侧：表单（AI 生成 / 手动出题 / 题型 / 时限 / 知识点）独立滚动
+   - 右侧：题目预览列表 独立滚动，长内容展开不挤压左侧 */
+@media (min-width: 900px) {
+  .quiz-content {
+    flex-direction: row;
+    overflow: hidden;
+    padding: 16px 20px;
+    gap: 20px;
+  }
+
+  .quiz-form-col {
+    flex: 0 0 52%;
+    max-width: 52%;
+    overflow-y: auto;
+    padding-right: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .quiz-preview-col {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+    padding-left: 12px;
+    border-left: 1px dashed var(--border);
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* 竖屏 / 手机（<900px）：单列堆叠 */
+@media (max-width: 899px) {
+  .quiz-form-col {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .quiz-preview-col {
+    margin-top: 8px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--border);
+  }
 }
 
 .form-group {
@@ -618,58 +644,6 @@ function pushQuiz() {
     border-color: var(--primary);
     color: var(--primary);
     background: var(--primary-light);
-  }
-}
-
-.questions-preview {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-
-  label {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-}
-
-.preview-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  background: var(--bg-page);
-  border-radius: var(--radius-sm);
-
-  .preview-num {
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    background: var(--primary);
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    font-weight: 700;
-    flex-shrink: 0;
-  }
-
-  .preview-text {
-    flex: 1;
-    font-size: 13px;
-    color: var(--text-primary);
-  }
-
-  .preview-points {
-    flex-shrink: 0;
-    padding: 2px 8px;
-    border-radius: 10px;
-    font-size: 11px;
-    font-weight: 600;
-    background: #fff7e6;
-    color: #d46b08;
-    border: 1px solid #ffe7ba;
   }
 }
 
@@ -852,18 +826,6 @@ function pushQuiz() {
     height: 1px;
     background: var(--border);
   }
-}
-
-.preview-type {
-  flex-shrink: 0;
-  padding: 2px 8px;
-  font-size: 10px;
-  font-weight: 600;
-  border-radius: 8px;
-  &.single_choice { background: #e6f4ff; color: #1677ff; }
-  &.multiple_choice { background: #f9f0ff; color: #722ed1; }
-  &.true_false { background: #fff7e6; color: #d46b08; }
-  &.short_answer { background: #f6ffed; color: #389e0d; }
 }
 
 .kp-preview { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }

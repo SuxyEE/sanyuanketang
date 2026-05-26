@@ -14,36 +14,26 @@
       </div>
 
       <div v-if="tab === 'create'" class="create-area">
-        <div class="ai-generate-card">
-          <div class="ai-card-header">
-            <span class="ai-badge" v-html="botIcon" aria-hidden="true"></span>
-            <span>AI 智能出作业</span>
-          </div>
-          <p class="ai-card-desc">基于知识点描述，AI 自动生成 5 道针对性课后练习（单选 / 判断 / 简答）</p>
-          <input
-            v-model="homeworkTopic"
-            class="topic-input"
-            placeholder="知识点（默认按当前课程）..."
-            :disabled="isGenerating"
-          />
-          <button class="ai-gen-btn" @click="generateHomework" :disabled="isGenerating">
-            <span v-if="isGenerating" class="btn-spinner" aria-hidden="true"></span>
-            {{ isGenerating ? 'AI 生成中…' : '一键生成作业' }}
-          </button>
-        </div>
-
-        <div v-if="generatedHomework" class="generated-content">
-          <h4>已生成作业预览（{{ generatedHomework.length }}）</h4>
-          <div class="hw-preview">
-            <div v-for="(q, idx) in generatedHomework" :key="idx" class="hw-item">
-              <span class="hw-num">{{ idx + 1 }}</span>
-              <div class="hw-body">
-                <p class="hw-type">[{{ TYPE_LABEL[q.type] || q.type }}]</p>
-                <p class="hw-text">{{ q.content }}</p>
-              </div>
+        <div class="hw-form-col">
+          <div class="ai-generate-card">
+            <div class="ai-card-header">
+              <span class="ai-badge" v-html="botIcon" aria-hidden="true"></span>
+              <span>AI 智能出作业</span>
             </div>
+            <p class="ai-card-desc">基于知识点描述，AI 自动生成 5 道针对性课后练习（单选 / 判断 / 简答）</p>
+            <input
+              v-model="homeworkTopic"
+              class="topic-input"
+              placeholder="知识点（默认按当前课程）..."
+              :disabled="isGenerating"
+            />
+            <button class="ai-gen-btn" @click="generateHomework" :disabled="isGenerating">
+              <span v-if="isGenerating" class="btn-spinner" aria-hidden="true"></span>
+              {{ isGenerating ? 'AI 生成中…' : '一键生成作业' }}
+            </button>
           </div>
-          <div class="hw-settings">
+
+          <div v-if="generatedHomework" class="hw-settings">
             <div class="setting-row">
               <label>截止时间</label>
               <select v-model="deadline">
@@ -52,24 +42,35 @@
                 <option value="week">本周日</option>
               </select>
             </div>
+            <button class="publish-btn" @click="publishHomework" :disabled="isPublishing">
+              {{ isPublishing ? '发布中…' : '发布作业到学生端' }}
+            </button>
           </div>
-          <button class="publish-btn" @click="publishHomework" :disabled="isPublishing">
-            {{ isPublishing ? '发布中…' : '发布作业到学生端' }}
-          </button>
+
+          <div class="manual-create">
+            <h4>手动创建</h4>
+            <div class="form-group">
+              <label>作业标题</label>
+              <input v-model="manualTitle" placeholder="输入作业标题" />
+            </div>
+            <div class="form-group">
+              <label>作业描述</label>
+              <textarea v-model="manualDesc" rows="3" placeholder="输入作业要求..."></textarea>
+            </div>
+            <button class="publish-btn outline" @click="publishManual">发布手动作业</button>
+          </div>
         </div>
 
-        <div class="manual-create">
-          <h4>手动创建</h4>
-          <div class="form-group">
-            <label>作业标题</label>
-            <input v-model="manualTitle" placeholder="输入作业标题" />
-          </div>
-          <div class="form-group">
-            <label>作业描述</label>
-            <textarea v-model="manualDesc" rows="3" placeholder="输入作业要求..."></textarea>
-          </div>
-          <button class="publish-btn outline" @click="publishManual">发布手动作业</button>
-        </div>
+        <aside class="hw-preview-col">
+          <QuestionPreviewList
+            :questions="generatedHomework || []"
+            title="作业题目预览"
+            empty-text="点左侧「一键生成作业」生成题目"
+            :removable="true"
+            :with-tts="true"
+            @remove="onRemoveHwQuestion"
+          />
+        </aside>
       </div>
 
       <div v-else class="review-area">
@@ -106,6 +107,7 @@ import { icons } from '@snyuan/shared'
 import { useToast } from '../composables/useToast'
 import { useSocket } from '../composables/useSocket'
 import { useClassroomStore } from '../stores/classroom'
+import QuestionPreviewList from './QuestionPreviewList.vue'
 
 defineEmits<{ close: [] }>()
 
@@ -123,15 +125,28 @@ const manualDesc = ref('')
 const homeworkTopic = ref('')
 
 interface HwQuestion {
+  id?: string
   type: string
   content: string
   options?: { key: string; content: string }[]
   answer?: string
   referenceAnswer?: string
   analysis?: string
+  points?: number
+  difficulty?: 'easy' | 'medium' | 'hard'
+  knowledgePoints?: string[]
 }
 
 const generatedHomework = ref<HwQuestion[] | null>(null)
+
+function onRemoveHwQuestion(idx: number) {
+  if (!generatedHomework.value) return
+  generatedHomework.value.splice(idx, 1)
+  toastInfo('已删除题目')
+  if (generatedHomework.value.length === 0) {
+    generatedHomework.value = null
+  }
+}
 
 const submissions = ref([
   { name: '学生01', score: 92, status: 'reviewed' },
@@ -151,13 +166,6 @@ function cleanupHandler() {
     socket.value.off('ai:quiz-gen', currentHandler)
     currentHandler = null
   }
-}
-
-const TYPE_LABEL: Record<string, string> = {
-  single_choice: '选择题',
-  multiple_choice: '多选题',
-  true_false: '判断题',
-  short_answer: '简答题',
 }
 
 function deadlineDate(): string {
@@ -194,13 +202,17 @@ function generateHomework() {
       toastError('AI 未返回有效作业，请重试')
       return
     }
-    generatedHomework.value = result.questions.map((q: any) => ({
+    generatedHomework.value = result.questions.map((q: any, i: number) => ({
+      id: `hw-${Date.now()}-${i}`,
       type: q.type || 'single_choice',
       content: q.content,
       options: q.options,
       answer: q.answer,
       referenceAnswer: q.referenceAnswer || q.answer,
       analysis: q.analysis,
+      points: typeof q.points === 'number' ? q.points : undefined,
+      difficulty: q.difficulty,
+      knowledgePoints: Array.isArray(q.knowledgePoints) ? q.knowledgePoints : (topic ? [topic] : undefined),
     }))
     toastSuccess(`AI 已生成 ${generatedHomework.value!.length} 道题目`)
   }
@@ -292,7 +304,63 @@ onUnmounted(() => {
   display: flex; align-items: center; justify-content: center; cursor: pointer;
 }
 
-.panel-body { flex: 1; overflow-y: auto; padding: 16px 20px; }
+.panel-body { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 16px 20px; overflow: hidden; }
+
+.create-area {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.review-area { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
+/* 横屏 / 平板（≥900px）：左右分栏 */
+@media (min-width: 900px) {
+  .create-area {
+    flex-direction: row;
+    overflow: hidden;
+    gap: 20px;
+  }
+
+  .hw-form-col {
+    flex: 0 0 48%;
+    max-width: 48%;
+    overflow-y: auto;
+    padding-right: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .hw-preview-col {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+    padding-left: 12px;
+    border-left: 1px dashed var(--border);
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* 竖屏 / 手机（<900px）：单列堆叠 */
+@media (max-width: 899px) {
+  .hw-form-col {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .hw-preview-col {
+    margin-top: 8px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--border);
+  }
+}
 
 .tab-bar {
   display: flex; gap: 4px; padding: 3px; background: var(--bg-page);
@@ -349,22 +417,11 @@ onUnmounted(() => {
   to { transform: rotate(360deg); }
 }
 
-.generated-content { margin-bottom: 24px; }
-.generated-content h4, .manual-create h4 {
+.manual-create h4 {
   font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--text-primary);
 }
 
-.hw-preview { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
-
-.hw-item {
-  display: flex; gap: 10px; padding: 10px 12px;
-  background: var(--bg-page); border-radius: 10px;
-  .hw-num { width: 24px; height: 24px; border-radius: 50%; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
-  .hw-type { font-size: 11px; color: var(--primary); font-weight: 500; }
-  .hw-text { font-size: 13px; color: var(--text-primary); line-height: 1.5; }
-}
-
-.hw-settings { margin-bottom: 12px; }
+.hw-settings { margin: 12px 0; }
 .setting-row {
   display: flex; align-items: center; gap: 10px;
   label { font-size: 13px; color: var(--text-secondary); }

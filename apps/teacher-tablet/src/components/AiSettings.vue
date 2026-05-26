@@ -12,6 +12,15 @@
         <p>选择你想用的 AI 模型，配置只保存在本机浏览器，不会同步给其他教师。<br/>留空 = 使用服务端默认（一般是 .env 中配置的免费教学 key）。</p>
       </div>
 
+      <div v-if="ownerWarning" class="owner-warn" role="alert">
+        <span class="owner-warn-icon">⚠</span>
+        <div class="owner-warn-body">
+          <strong>当前 AI 设置由「{{ settings.ownerName }}」配置</strong>
+          <p>你（{{ currentTeacher }}）正在使用上一位教师留下的 API key 与模型，AI 调用计费将归属其账号。如需切换为自己的，请重新填入或点击"恢复默认"。</p>
+        </div>
+        <button class="owner-warn-takeover" @click="takeOver">使用我的身份覆盖</button>
+      </div>
+
       <div v-if="loading" class="loading-state">
         <div class="loading-spinner"></div>
         <p>正在加载 provider 列表…</p>
@@ -157,8 +166,19 @@ interface ProviderInfo {
 
 defineEmits<{ close: [] }>()
 
-const { settings, save, reset, getRequestConfig } = useAiSettings()
+const { settings, save, reset, getRequestConfig, isOwnedByOther } = useAiSettings()
 const { toastSuccess, toastInfo, toastError } = useToast()
+
+/**
+ * 这里没有真实"当前登录教师"上下文（前端目前用硬编码 'teacher-001 / 教师'），
+ * 所以暂时从 URL roomCode 派生一个稳定标识；B4 接真鉴权后可改为读 useAuth() store。
+ */
+const currentTeacher = computed(() => {
+  const code = new URLSearchParams(window.location.search).get('roomCode') || ''
+  return code ? `教师·${code.slice(-4)}` : '教师'
+})
+
+const ownerWarning = computed(() => isOwnedByOther(currentTeacher.value))
 
 const providers = ref<ProviderInfo[]>([])
 const loading = ref(true)
@@ -246,8 +266,18 @@ function onSave() {
   const model = selectedProvider.value && selectedModel.value
     ? `${selectedProvider.value}:${selectedModel.value}`
     : ''
-  save({ model, apiKey: apiKey.value.trim(), baseUrl: baseUrl.value.trim() })
+  save({
+    model,
+    apiKey: apiKey.value.trim(),
+    baseUrl: baseUrl.value.trim(),
+    ownerName: currentTeacher.value,
+  })
   toastSuccess('AI 设置已保存（仅本机生效）')
+}
+
+function takeOver() {
+  save({ ownerName: currentTeacher.value })
+  toastInfo(`已把 AI 设置归属切换为 ${currentTeacher.value}`)
 }
 
 function onReset() {
@@ -331,6 +361,25 @@ async function onTest() {
   border: 1px solid rgba(22, 119, 255, 0.18);
   border-radius: 12px; padding: 12px 14px;
   p { font-size: 12px; color: var(--text-secondary); margin: 0; line-height: 1.6; }
+}
+
+.owner-warn {
+  display: flex; align-items: flex-start; gap: 10px;
+  background: #fff7e6; border: 1px solid #ffd591; color: #ad6800;
+  border-radius: 12px; padding: 12px 14px;
+
+  .owner-warn-icon { font-size: 18px; line-height: 1; padding-top: 1px; }
+  .owner-warn-body {
+    flex: 1; min-width: 0;
+    strong { font-size: 13px; display: block; margin-bottom: 4px; }
+    p { font-size: 12px; margin: 0; line-height: 1.55; color: #874d00; }
+  }
+  .owner-warn-takeover {
+    align-self: stretch; padding: 0 10px;
+    border: 1px solid #ad6800; background: #fff; color: #ad6800;
+    font-size: 12px; font-weight: 600; border-radius: 8px; cursor: pointer; white-space: nowrap;
+    &:active { background: #fff7e6; }
+  }
 }
 
 .loading-state { text-align: center; padding: 40px 0; color: var(--text-muted); }

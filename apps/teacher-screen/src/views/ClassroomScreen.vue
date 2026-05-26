@@ -2,53 +2,16 @@
   <div class="classroom-screen">
     <transition name="picker-fade">
       <div v-if="showPicker" class="picker-overlay">
-        <div class="picker-card">
-          <h2>请选择课堂</h2>
-          <p class="picker-sub">教师端进入课堂后，请在这里选择对应的课堂，或手动输入课堂入口码。</p>
-
-          <div class="picker-quick">
-            <button class="picker-btn refresh" @click="refreshRoomsList" :disabled="loadingRooms">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-              {{ loadingRooms ? '刷新中…' : '刷新课堂列表' }}
-            </button>
+        <div class="takeover-card">
+          <div class="takeover-copy">
+            <span class="takeover-kicker">三元课堂大屏</span>
+            <h1>请教师扫码接管大屏</h1>
+            <p>扫码后，教师端会绑定本大屏并进入课程选择。发起课堂后，学生扫码加入，名单会在大屏与教师端实时同步。</p>
+            <div class="takeover-code">会话码 {{ currentLessonId }}</div>
           </div>
-
-          <div v-if="activeRooms.length > 0" class="picker-rooms">
-            <div
-              v-for="r in activeRooms"
-              :key="r.roomId"
-              class="picker-room"
-              @click="joinRoom(r.lessonId)"
-            >
-              <div class="picker-room-main">
-                <span class="picker-room-code">{{ r.lessonId }}</span>
-                <span class="picker-room-info">
-                  {{ r.teacherName || '教师未上线' }} · {{ r.studentCount }} 学生
-                  <span v-if="r.activeQuiz" class="picker-tag quiz">测验中</span>
-                  <span v-if="r.activeCompete" class="picker-tag compete">抢答中</span>
-                  <span v-if="r.activeAttendance" class="picker-tag att">签到中</span>
-                  <span v-if="r.hasScreen" class="picker-tag screen">已接大屏</span>
-                </span>
-              </div>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
-            </div>
-          </div>
-          <div v-else class="picker-empty">
-            <p>暂未发现进行中的课堂</p>
-            <p class="hint">请教师先在平板端选课进入课堂，然后回到这里刷新</p>
-          </div>
-
-          <div class="picker-manual">
-            <span class="picker-or">或直接输入入口码</span>
-            <div class="picker-input-row">
-              <input
-                v-model="manualRoomCode"
-                placeholder="6位数字入口码 / lessonId"
-                maxlength="40"
-                @keyup.enter="joinManualRoom"
-              />
-              <button class="picker-join-btn" :disabled="!manualRoomCode.trim()" @click="joinManualRoom">进入</button>
-            </div>
+          <div class="takeover-qr">
+            <img :src="teacherQrUrl" alt="教师接管二维码" />
+            <span>教师端扫码</span>
           </div>
         </div>
       </div>
@@ -205,9 +168,23 @@
           </div>
 
           <div v-else-if="store.slides.length > 0 && currentSlideData" key="slides" class="slide-display">
-            <transition name="slide-crossfade" mode="out-in">
-              <img :key="store.currentSlide" :src="currentSlideData.dataUrl" alt="课件" class="slide-image" />
-            </transition>
+            <div class="slide-image-wrap" ref="slideImageWrapRef">
+              <transition name="slide-crossfade" mode="out-in">
+                <img
+                  :key="store.currentSlide"
+                  :src="currentSlideData.dataUrl"
+                  alt="课件"
+                  class="slide-image"
+                  @load="onSlideImageLoaded"
+                />
+              </transition>
+              <canvas
+                ref="annoCanvasRef"
+                class="anno-canvas-overlay"
+                :width="annoCanvasPixelSize.w"
+                :height="annoCanvasPixelSize.h"
+              ></canvas>
+            </div>
             <div class="slide-page-label">{{ store.currentSlide }} / {{ store.totalSlides }}</div>
           </div>
 
@@ -216,8 +193,18 @@
               <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="rgba(65,120,255,0.5)" stroke-width="1.5">
                 <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
               </svg>
-              <h2>智慧课堂</h2>
-              <p>等待教师开始上课...</p>
+              <h2>{{ isTeacherControlled ? '课堂已接管' : '智慧课堂' }}</h2>
+              <p>{{ isTeacherControlled ? '请学生扫码加入课堂' : '等待教师扫码接管大屏...' }}</p>
+              <div v-if="isTeacherControlled" class="student-join-panel">
+                <img :src="studentQrUrl" alt="学生加入二维码" />
+                <div>
+                  <strong>课堂码 {{ currentLessonId }}</strong>
+                  <span>{{ store.onlineStudents }} 名学生已加入</span>
+                </div>
+              </div>
+              <div v-if="isTeacherControlled && store.students.length > 0" class="screen-student-strip">
+                <span v-for="s in store.students.slice(0, 18)" :key="s.id">{{ s.name }}</span>
+              </div>
             </div>
           </div>
         </transition>
@@ -294,33 +281,205 @@ interface AiWhiteboardPayload {
 
 const aiWhiteboard = ref<AiWhiteboardPayload | null>(null)
 
+/* ===== 蒙版涂鸦（只读，跟随教师端） ===== */
+interface AnnoPoint { x: number; y: number }
+interface AnnoStroke {
+  id: string
+  slideIndex: number
+  color: string
+  width: number
+  points: AnnoPoint[]
+  createdBy?: string
+}
+
+const slideImageWrapRef = ref<HTMLElement | null>(null)
+const annoCanvasRef = ref<HTMLCanvasElement | null>(null)
+const annoCanvasPixelSize = ref({ w: 1280, h: 720 })
+const annotationsByPage = new Map<number, AnnoStroke[]>()
+const activeStrokesById = new Map<string, AnnoStroke>()
+
+function getAnnoCtx(): CanvasRenderingContext2D | null {
+  return annoCanvasRef.value?.getContext('2d') || null
+}
+
+function resizeAnnoCanvas() {
+  const wrap = slideImageWrapRef.value
+  const canvas = annoCanvasRef.value
+  if (!wrap || !canvas) return
+  const rect = wrap.getBoundingClientRect()
+  const dpr = window.devicePixelRatio || 1
+  annoCanvasPixelSize.value = {
+    w: Math.max(1, Math.round(rect.width * dpr)),
+    h: Math.max(1, Math.round(rect.height * dpr)),
+  }
+  setTimeout(() => {
+    const ctx = getAnnoCtx()
+    if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    redrawAnnotations()
+  }, 0)
+}
+
+function onSlideImageLoaded() {
+  resizeAnnoCanvas()
+}
+
+function drawStroke(ctx: CanvasRenderingContext2D, stroke: AnnoStroke) {
+  if (stroke.points.length === 0) return
+  const wrap = slideImageWrapRef.value
+  if (!wrap) return
+  const rect = wrap.getBoundingClientRect()
+  const w = rect.width
+  const h = rect.height
+  ctx.strokeStyle = stroke.color
+  ctx.lineWidth = stroke.width
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.beginPath()
+  const p0 = stroke.points[0]
+  ctx.moveTo(p0.x * w, p0.y * h)
+  for (let i = 1; i < stroke.points.length; i++) {
+    const p = stroke.points[i]
+    ctx.lineTo(p.x * w, p.y * h)
+  }
+  if (stroke.points.length === 1) {
+    ctx.lineTo(p0.x * w + 0.1, p0.y * h + 0.1)
+  }
+  ctx.stroke()
+}
+
+function redrawAnnotations() {
+  const ctx = getAnnoCtx()
+  const wrap = slideImageWrapRef.value
+  if (!ctx || !wrap) return
+  const rect = wrap.getBoundingClientRect()
+  ctx.clearRect(0, 0, rect.width, rect.height)
+  const finished = annotationsByPage.get(store.currentSlide) || []
+  finished.forEach(s => drawStroke(ctx, s))
+  for (const s of activeStrokesById.values()) {
+    if (s.slideIndex === store.currentSlide) drawStroke(ctx, s)
+  }
+}
+
+function appendStrokeSegment(stroke: AnnoStroke) {
+  if (stroke.slideIndex !== store.currentSlide) return
+  const ctx = getAnnoCtx()
+  const wrap = slideImageWrapRef.value
+  if (!ctx || !wrap) return
+  const rect = wrap.getBoundingClientRect()
+  const w = rect.width
+  const h = rect.height
+  ctx.strokeStyle = stroke.color
+  ctx.lineWidth = stroke.width
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  if (stroke.points.length < 2) {
+    const p = stroke.points[0]
+    if (!p) return
+    ctx.beginPath()
+    ctx.moveTo(p.x * w, p.y * h)
+    ctx.lineTo(p.x * w + 0.1, p.y * h + 0.1)
+    ctx.stroke()
+    return
+  }
+  const prev = stroke.points[stroke.points.length - 2]
+  const cur = stroke.points[stroke.points.length - 1]
+  ctx.beginPath()
+  ctx.moveTo(prev.x * w, prev.y * h)
+  ctx.lineTo(cur.x * w, cur.y * h)
+  ctx.stroke()
+}
+
+function annoApplyStart(data: any) {
+  if (!data?.strokeId) return
+  const stroke: AnnoStroke = {
+    id: data.strokeId,
+    slideIndex: data.slideIndex,
+    color: data.color,
+    width: data.width,
+    points: data.point ? [data.point] : [],
+    createdBy: data.createdBy,
+  }
+  activeStrokesById.set(stroke.id, stroke)
+  if (data.point && stroke.slideIndex === store.currentSlide) appendStrokeSegment(stroke)
+}
+function annoApplyPoint(data: any) {
+  const stroke = activeStrokesById.get(data?.strokeId)
+  if (!stroke || !data?.point) return
+  stroke.points.push(data.point)
+  if (stroke.slideIndex === store.currentSlide) appendStrokeSegment(stroke)
+}
+function annoApplyEnd(data: any) {
+  const stroke = activeStrokesById.get(data?.strokeId)
+  if (!stroke) return
+  activeStrokesById.delete(stroke.id)
+  if (stroke.points.length === 0) return
+  const list = annotationsByPage.get(stroke.slideIndex) || []
+  list.push(stroke)
+  annotationsByPage.set(stroke.slideIndex, list)
+}
+function annoApplyClear(data: any) {
+  const slideIndex = Number(data?.slideIndex)
+  if (slideIndex === -1) {
+    annotationsByPage.clear()
+    activeStrokesById.clear()
+  } else {
+    annotationsByPage.delete(slideIndex)
+    for (const [id, s] of activeStrokesById.entries()) {
+      if (s.slideIndex === slideIndex) activeStrokesById.delete(id)
+    }
+  }
+  if (slideIndex === -1 || slideIndex === store.currentSlide) redrawAnnotations()
+}
+function annoApplyUndo(data: any) {
+  const list = annotationsByPage.get(data?.slideIndex)
+  if (!list || list.length === 0) return
+  if (data?.strokeId) {
+    const idx = list.findIndex(s => s.id === data.strokeId)
+    if (idx >= 0) list.splice(idx, 1)
+  } else {
+    list.pop()
+  }
+  if (list.length === 0) annotationsByPage.delete(data.slideIndex)
+  if (data.slideIndex === store.currentSlide) redrawAnnotations()
+}
+function annoApplySnapshot(snapshot?: Record<string, AnnoStroke[]>) {
+  annotationsByPage.clear()
+  activeStrokesById.clear()
+  if (!snapshot) return
+  for (const [k, list] of Object.entries(snapshot)) {
+    const idx = Number(k)
+    if (!Array.isArray(list)) continue
+    annotationsByPage.set(idx, list.map(s => ({ ...s, points: s.points.slice() })))
+  }
+  redrawAnnotations()
+}
+
 const route = useRoute()
 const store = useClassroomStore()
 const { socket, connected, connect } = useSocket()
 const queryRoom = (route.query.room as string) || ''
-const currentLessonId = ref(queryRoom)
+const currentLessonId = ref(queryRoom || String(Math.floor(100000 + Math.random() * 900000)))
 const currentRoomLabel = computed(() => currentLessonId.value)
-const showPicker = ref(!queryRoom)
-const activeRooms = ref<Array<any>>([])
-const loadingRooms = ref(false)
+const showPicker = ref(true)
 const manualRoomCode = ref('')
+const isTeacherControlled = ref(false)
+const serverBase = import.meta.env.VITE_WS_URL || 'http://localhost:3000'
+const teacherQrUrl = computed(() => `${serverBase}/api/v1/qr/classroom?room=${currentLessonId.value}&action=teacher`)
+const studentQrUrl = computed(() => `${serverBase}/api/v1/qr/classroom?room=${currentLessonId.value}&action=student`)
 const currentTime = ref('')
 let timeInterval: ReturnType<typeof setInterval>
 let broadcastTimer: ReturnType<typeof setTimeout> | null = null
 let screenSocket: ReturnType<typeof connect> | null = null
 let roomsPollTimer: ReturnType<typeof setInterval> | null = null
+let lessonEndPickerTimer: ReturnType<typeof setTimeout> | null = null
 
-function refreshRoomsList() {
-  if (!screenSocket?.connected) return
-  loadingRooms.value = true
-  screenSocket.emit('rooms:list')
-  setTimeout(() => { loadingRooms.value = false }, 600)
+function isTeacherController(member: any) {
+  return member?.role === 'teacher' && ['teacher-tablet', 'teacher-uniapp'].includes(member?.clientType)
 }
 
 function joinRoom(lessonId: string) {
   manualRoomCode.value = ''
   currentLessonId.value = lessonId
-  showPicker.value = false
   if (roomsPollTimer) { clearInterval(roomsPollTimer); roomsPollTimer = null }
   if (screenSocket?.connected) {
     screenSocket.emit('room:join', {
@@ -430,11 +589,20 @@ const handlers = {
     if (data.aiPractice) {
       store.setAiPractice(data.aiPractice)
     }
+    if (data.lessonMeta) handlers.onLessonStart({ ...data.lessonMeta, resetState: false })
+    if (data.members) handlers.onMemberUpdate(data)
+    annoApplySnapshot(data?.annotations)
   },
   onSlideGoto: (data: { index: number; total: number }) => {
     store.currentSlide = data.index
     store.totalSlides = data.total
+    setTimeout(() => redrawAnnotations(), 0)
   },
+  onAnnotationStrokeStart: annoApplyStart,
+  onAnnotationStrokePoint: annoApplyPoint,
+  onAnnotationStrokeEnd: annoApplyEnd,
+  onAnnotationClear: annoApplyClear,
+  onAnnotationUndo: annoApplyUndo,
   onSlidesLoaded: (data: { slides: any[]; total: number }) => {
     store.slides = data.slides
     store.totalSlides = data.total
@@ -442,7 +610,14 @@ const handlers = {
       store.currentSlide = 1
     }
   },
-  onMemberUpdate: (data: any) => { store.updateMembers(data) },
+  onMemberUpdate: (data: any) => {
+    store.updateMembers(data)
+    const members = Array.isArray(data?.members) ? data.members : []
+    if (members.some(isTeacherController)) {
+      isTeacherControlled.value = true
+      showPicker.value = false
+    }
+  },
   onQuizStart: (task: any) => {
     store.activeQuiz = task
     store.answerStats = { submitted: 0, total: task.totalStudents || store.onlineStudents, accuracy: 0 }
@@ -515,9 +690,23 @@ const handlers = {
     store.activeQuiz = null
     store.groups = []
     store.isLocked = false
+    store.currentSlide = 1
+    store.totalSlides = 0
+    store.slides = []
+    store.handRaisedStudents = []
+    store.questions = []
+    store.answerStats = { submitted: 0, total: 0, accuracy: 0 }
     store.compete = null
     store.attendance = null
     store.aiPractice = null
+    aiWhiteboard.value = null
+    isTeacherControlled.value = false
+    // 先让"本节课已结束"卡片露脸 1.8s，再切到教师接管二维码
+    if (lessonEndPickerTimer) clearTimeout(lessonEndPickerTimer)
+    lessonEndPickerTimer = setTimeout(() => {
+      lessonEndPickerTimer = null
+      showPicker.value = true
+    }, 1800)
   },
   onCompeteStart: (data: { question: string; timeLimit: number; startTime?: number }) => {
     store.startCompete({ question: data.question, timeLimit: data.timeLimit, startTime: data.startTime || Date.now() })
@@ -534,33 +723,43 @@ const handlers = {
   onHomeworkPublish: (hw: { title: string; questions: any[] }) => {
     showBroadcastBanner(`课后作业已下发：${hw.title}（${(hw.questions || []).length} 题）`, 5000)
   },
+  onLessonStart: (data: { courseName?: string; lessonTitle?: string; roomCode?: string; resetState?: boolean }) => {
+    if (lessonEndPickerTimer) {
+      clearTimeout(lessonEndPickerTimer)
+      lessonEndPickerTimer = null
+    }
+    if (data.courseName) store.courseName = data.courseName
+    if (data.lessonTitle) store.lessonTitle = data.lessonTitle
+    store.sectionTitle = data.lessonTitle || data.courseName || store.sectionTitle
+    store.lessonEnded = false
+    if (data.resetState !== false) {
+      store.currentSlide = 1
+      store.totalSlides = 0
+      store.slides = []
+      store.activeQuiz = null
+      store.answerStats = { submitted: 0, total: 0, accuracy: 0 }
+      store.isLocked = false
+      store.groups = []
+      store.handRaisedStudents = []
+      store.questions = []
+      store.compete = null
+      store.attendance = null
+      store.aiPractice = null
+      aiWhiteboard.value = null
+    }
+    isTeacherControlled.value = true
+    showPicker.value = false
+  },
 }
 
 onMounted(() => {
   updateTime()
   timeInterval = setInterval(updateTime, 5000)
 
-  const initialRoom = currentLessonId.value || '__picker__'
+  const initialRoom = currentLessonId.value
   const s = connect(initialRoom, 'screen-001', '教室大屏')
   screenSocket = s
   store.isConnected = s.connected
-
-  s.on('rooms:list', (list: any[]) => {
-    activeRooms.value = Array.isArray(list) ? list : []
-    loadingRooms.value = false
-  })
-
-  if (showPicker.value) {
-    const tryFetch = () => {
-      if (s.connected) {
-        refreshRoomsList()
-      } else {
-        setTimeout(tryFetch, 400)
-      }
-    }
-    tryFetch()
-    roomsPollTimer = setInterval(refreshRoomsList, 4000)
-  }
 
   s.on('connect', handlers.onConnect)
   s.on('disconnect', handlers.onDisconnect)
@@ -593,7 +792,14 @@ onMounted(() => {
   s.on('ai:whiteboard:hide', handlers.onAiWhiteboardHide)
   s.on('compete:start', handlers.onCompeteStart)
   s.on('compete:stop', handlers.onCompeteStop)
+  s.on('lesson:start', handlers.onLessonStart)
   s.on('lesson:end', handlers.onLessonEnd)
+  s.on('annotation:stroke:start', handlers.onAnnotationStrokeStart)
+  s.on('annotation:stroke:point', handlers.onAnnotationStrokePoint)
+  s.on('annotation:stroke:end', handlers.onAnnotationStrokeEnd)
+  s.on('annotation:clear', handlers.onAnnotationClear)
+  s.on('annotation:undo', handlers.onAnnotationUndo)
+  window.addEventListener('resize', resizeAnnoCanvas)
 
   tickInterval = setInterval(() => { tickClock.value = Date.now() }, 1000)
 })
@@ -601,6 +807,7 @@ onMounted(() => {
 onUnmounted(() => {
   clearInterval(timeInterval)
   if (broadcastTimer) { clearTimeout(broadcastTimer); broadcastTimer = null }
+  if (lessonEndPickerTimer) { clearTimeout(lessonEndPickerTimer); lessonEndPickerTimer = null }
   const s = screenSocket
   if (s) {
     s.off('connect', handlers.onConnect)
@@ -634,8 +841,15 @@ onUnmounted(() => {
     s.off('ai:whiteboard:hide', handlers.onAiWhiteboardHide)
     s.off('compete:start', handlers.onCompeteStart)
     s.off('compete:stop', handlers.onCompeteStop)
+    s.off('lesson:start', handlers.onLessonStart)
     s.off('lesson:end', handlers.onLessonEnd)
+    s.off('annotation:stroke:start', handlers.onAnnotationStrokeStart)
+    s.off('annotation:stroke:point', handlers.onAnnotationStrokePoint)
+    s.off('annotation:stroke:end', handlers.onAnnotationStrokeEnd)
+    s.off('annotation:clear', handlers.onAnnotationClear)
+    s.off('annotation:undo', handlers.onAnnotationUndo)
   }
+  window.removeEventListener('resize', resizeAnnoCanvas)
   if (tickInterval) clearInterval(tickInterval)
   if (roomsPollTimer) { clearInterval(roomsPollTimer); roomsPollTimer = null }
 })
@@ -650,6 +864,80 @@ onUnmounted(() => {
   flex-direction: column;
   overflow: hidden;
   color: #fff;
+}
+
+.takeover-card {
+  width: min(1180px, calc(100vw - 96px));
+  min-height: 560px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 48px;
+  align-items: center;
+  padding: 56px;
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #111827;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.38);
+}
+
+.takeover-kicker {
+  display: inline-flex;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: rgba(65, 120, 255, 0.12);
+  color: #2459d9;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.takeover-copy h1 {
+  margin: 18px 0 18px;
+  font-size: 56px;
+  line-height: 1.05;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.takeover-copy p {
+  max-width: 680px;
+  margin: 0;
+  color: #4b5563;
+  font-size: 22px;
+  line-height: 1.6;
+}
+
+.takeover-code {
+  display: inline-flex;
+  margin-top: 34px;
+  padding: 14px 22px;
+  border-radius: 16px;
+  background: #111827;
+  color: #fff;
+  font-size: 24px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.takeover-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 24px;
+  border-radius: 24px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+}
+
+.takeover-qr img {
+  width: 280px;
+  height: 280px;
+}
+
+.takeover-qr span {
+  color: #374151;
+  font-size: 18px;
+  font-weight: 700;
 }
 
 .screen-header {
@@ -730,8 +1018,8 @@ onUnmounted(() => {
   flex: 1;
   display: flex;
   overflow: hidden;
-  padding: 16px;
-  gap: 16px;
+  padding: 8px 12px 12px;
+  gap: 12px;
 }
 
 .display-area {
@@ -740,6 +1028,8 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   min-width: 0;
+  /* 给课件区让出最大可能宽度——四周留极薄边距，aspect-ratio 兜底让 16:9 课件吃满 */
+  padding: 0;
 }
 
 .slide-display {
@@ -750,12 +1040,39 @@ onUnmounted(() => {
   justify-content: center;
   position: relative;
 
-  .slide-image {
+  .slide-image-wrap {
+    position: relative;
+    /* 让 16:9 课件吃满 display-area 可用空间 · 不再受默认 inline-flex 的"内容收缩"约束
+       计算思路：
+       - width 取「display-area 实际宽度」与「按 16:9 由高度反推的宽度」中的较小者
+       - 用 vw/vh 估算可用空间：扣掉 header 高度 ~80px + screen-main 上下 padding 20px = 100px 高度损耗
+       - 扣掉 side-info 220px + gap 12px + screen-main 左右 padding 24px = 256px 宽度损耗
+       - 1920x1080 大屏：图能渲染到 ~1640 × 920，比之前 ~1280 × 720 大约 40% */
+    width: min(100%, calc((100vh - 100px) * 16 / 9));
+    height: min(100%, calc((100vw - 256px) * 9 / 16));
     max-width: 100%;
     max-height: 100%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .slide-image {
+    width: 100%;
+    height: 100%;
     object-fit: contain;
     border-radius: 12px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    display: block;
+  }
+
+  .anno-canvas-overlay {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    border-radius: 12px;
   }
 
   .slide-page-label {
@@ -769,6 +1086,60 @@ onUnmounted(() => {
     font-size: 13px;
     font-weight: 500;
   }
+}
+
+.student-join-panel {
+  margin-top: 28px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 18px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.student-join-panel img {
+  width: 150px;
+  height: 150px;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.student-join-panel div {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.student-join-panel strong {
+  font-size: 28px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.student-join-panel span {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 16px;
+}
+
+.screen-student-strip {
+  margin-top: 18px;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 720px;
+}
+
+.screen-student-strip span {
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(82, 196, 26, 0.16);
+  color: rgba(220, 252, 231, 0.95);
+  font-size: 14px;
+  font-weight: 700;
 }
 
 .waiting-screen, .end-screen, .lock-screen {
@@ -1065,11 +1436,11 @@ onUnmounted(() => {
 }
 
 .side-info {
-  width: 260px;
+  width: 220px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   overflow-y: auto;
 
   &::-webkit-scrollbar { width: 3px; }
@@ -1204,7 +1575,7 @@ onUnmounted(() => {
 @media (min-width: 1920px) {
   .screen-header { padding: 16px 32px; }
   .course-badge { font-size: 16px; }
-  .side-info { width: 320px; }
+  .side-info { width: 260px; }
 }
 
 .room-code-chip {

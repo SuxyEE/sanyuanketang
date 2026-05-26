@@ -69,6 +69,7 @@ export const useClassroomStore = defineStore('classroom', () => {
   const activeCompete = ref<ActiveCompeteState | null>(null)
   const activeAttendance = ref<ActiveAttendanceState | null>(null)
   const aiPractice = ref<{ topic: string; prompt?: string; startedAt: string } | null>(null)
+  const activeDiscussion = ref<{ groups: any[]; startedAt: number } | null>(null)
   const isLockedShared = ref(false)
 
   function setActiveCompete(data: ActiveCompeteState | null) {
@@ -96,6 +97,9 @@ export const useClassroomStore = defineStore('classroom', () => {
   }
   function setAiPractice(data: { topic: string; prompt?: string; startedAt: string } | null) {
     aiPractice.value = data
+  }
+  function setActiveDiscussion(data: { groups: any[]; startedAt: number } | null) {
+    activeDiscussion.value = data
   }
 
   function updateMembers(data: any) {
@@ -174,6 +178,7 @@ export const useClassroomStore = defineStore('classroom', () => {
     activeCompete,
     activeAttendance,
     aiPractice,
+    activeDiscussion,
     isLockedShared,
     updateMembers,
     onHandRaise,
@@ -189,5 +194,6 @@ export const useClassroomStore = defineStore('classroom', () => {
     endActiveAttendance,
     addAttendanceSigned,
     setAiPractice,
+    setActiveDiscussion,
   }
 })

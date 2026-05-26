@@ -38,8 +38,27 @@
           </div>
         </div>
 
-        <button class="start-btn" @click="startSignIn">
-          发起签到
+        <div class="verify-options">
+          <label class="verify-row" :class="{ disabled: signMode !== 'normal' && signMode !== 'location' }">
+            <input type="checkbox" v-model="requirePhoto" :disabled="signMode === 'code'" />
+            <span class="verify-text">
+              <strong>要求拍照</strong>
+              <span class="verify-hint">学生端调用前置摄像头采集正面照</span>
+            </span>
+          </label>
+          <label class="verify-row" :class="{ active: signMode === 'location' }">
+            <input type="checkbox" v-model="requireLocation" :disabled="signMode === 'code'" />
+            <span class="verify-text">
+              <strong>要求定位</strong>
+              <span class="verify-hint">校验学生是否在教师 {{ radius }} 米范围内</span>
+            </span>
+          </label>
+        </div>
+
+        <p v-if="locationStatus" class="location-status" :class="locationStatusClass">{{ locationStatus }}</p>
+
+        <button class="start-btn" :disabled="isStarting" @click="startSignIn">
+          {{ isStarting ? '正在获取教师定位…' : '发起签到' }}
         </button>
       </div>
 
@@ -96,7 +115,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { icons } from '@snyuan/shared'
 import { useSocket } from '../composables/useSocket'
 import { useClassroomStore } from '../stores/classroom'
@@ -112,16 +131,34 @@ const signMode = ref('normal')
 const duration = ref(3)
 const isStarted = ref(false)
 const remainingTime = ref(0)
+const requirePhoto = ref(true)
+const requireLocation = ref(false)
+const radius = ref(50)
+const isStarting = ref(false)
+const locationStatus = ref('')
+const locationStatusClass = ref<'info' | 'success' | 'error'>('info')
 const totalCount = computed(() => Math.max(store.totalCount, 1))
 const circumference = 2 * Math.PI * 52
 
 const modes = [
-  { value: 'normal', label: '普通签到', desc: '学生点击签到', icon: icons.userCheck },
+  { value: 'normal', label: '普通签到', desc: '可选拍照', icon: icons.userCheck },
   { value: 'code', label: '签到码', desc: '输入4位数字', icon: icons.lock },
   { value: 'location', label: '位置签到', desc: '检测教室范围', icon: icons.signal },
 ]
 
 const durations = [1, 3, 5, 10]
+
+// 切换模式时给出更合适的默认值
+watch(signMode, (mode) => {
+  if (mode === 'location') {
+    requireLocation.value = true
+  } else if (mode === 'code') {
+    requirePhoto.value = false
+    requireLocation.value = false
+  } else if (mode === 'normal') {
+    requirePhoto.value = true
+  }
+})
 
 const signedStudents = computed(() => store.activeAttendance?.signed.map(s => s.studentName) || [])
 const allStudents = computed(() => store.students.map(s => s.name))
@@ -177,15 +214,69 @@ onMounted(() => {
   }
 })
 
-function startSignIn() {
-  if (isStarted.value) return
+async function startSignIn() {
+  if (isStarted.value || isStarting.value) return
+  isStarting.value = true
+
+  // 位置签到需要教师当前坐标作为基准；其他模式只是想留个上下文
+  let teacherLocation: { latitude: number; longitude: number; accuracy?: number } | undefined
+  if (requireLocation.value) {
+    locationStatus.value = '正在获取教师位置…'
+    locationStatusClass.value = 'info'
+    try {
+      teacherLocation = await getTeacherGeo()
+      locationStatus.value = `已获取教师位置（精度 ±${Math.round(teacherLocation.accuracy ?? 0)} 米）`
+      locationStatusClass.value = 'success'
+    } catch (err: any) {
+      locationStatus.value = err?.message || '教师定位失败，请允许浏览器获取位置或改用其他模式'
+      locationStatusClass.value = 'error'
+      isStarting.value = false
+      return
+    }
+  } else {
+    locationStatus.value = ''
+  }
+
   socket.value?.emit('attendance:start', {
     mode: signMode.value,
     duration: duration.value,
+    requirePhoto: requirePhoto.value,
+    requireLocation: requireLocation.value,
+    radius: radius.value,
+    teacherLocation,
+    startedAt: Date.now(),
   })
 
   const modeLabel = modes.find(m => m.value === signMode.value)?.label || ''
   toastSuccess(`已发起${modeLabel}（${duration.value} 分钟）`)
+  isStarting.value = false
+}
+
+interface TeacherGeo { latitude: number; longitude: number; accuracy?: number }
+
+function getTeacherGeo(): Promise<TeacherGeo> {
+  return new Promise((resolve, reject) => {
+    if (!('geolocation' in navigator)) {
+      reject(new Error('当前浏览器不支持定位'))
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve({
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+        accuracy: pos.coords.accuracy,
+      }),
+      err => {
+        const msgMap: Record<number, string> = {
+          1: '请在浏览器设置中允许位置权限',
+          2: '系统定位不可用，请检查网络或 GPS',
+          3: '定位超时，请重试',
+        }
+        reject(new Error(msgMap[err.code] || '获取位置失败'))
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+    )
+  })
 }
 
 function endSignIn() {
@@ -284,7 +375,36 @@ onUnmounted(() => {
   background: linear-gradient(135deg, var(--primary), #4096ff);
   color: #fff; font-size: 16px; font-weight: 700; cursor: pointer;
   min-height: 52px; transition: all 0.2s;
-  &:active { transform: scale(0.98); }
+  &:active:not(:disabled) { transform: scale(0.98); }
+  &:disabled { opacity: 0.6; cursor: not-allowed; }
+}
+
+.verify-options {
+  display: flex; flex-direction: column; gap: 8px;
+}
+
+.verify-row {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 12px 14px; border: 1.5px solid var(--border); border-radius: 12px;
+  background: var(--bg-card); cursor: pointer; transition: all 0.2s;
+  &:hover { border-color: var(--primary); background: var(--primary-light); }
+  &.disabled { opacity: 0.45; cursor: not-allowed; }
+
+  input[type="checkbox"] {
+    width: 18px; height: 18px; margin-top: 2px; cursor: pointer; accent-color: var(--primary);
+    &:disabled { cursor: not-allowed; }
+  }
+
+  .verify-text { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+  strong { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+  .verify-hint { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
+}
+
+.location-status {
+  margin: 0; padding: 8px 12px; border-radius: 8px; font-size: 12px; font-weight: 500;
+  &.info { background: #e6f4ff; color: #0958d9; }
+  &.success { background: #f6ffed; color: #389e0d; }
+  &.error { background: #fff1f0; color: #cf1322; }
 }
 
 .progress-area {

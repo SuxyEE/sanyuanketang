@@ -1,0 +1,41 @@
+{
+  "easycom": {
+    "autoscan": true,
+    "custom": {}
+  },
+  "pages": [
+    {
+      "path": "pages/course-select/index",
+      "style": {
+        "navigationBarTitleText": "选择课程",
+        "navigationStyle": "custom",
+        "app-plus": {
+          "titleNView": false
+        }
+      }
+    },
+    {
+      "path": "pages/classroom/index",
+      "style": {
+        "navigationBarTitleText": "教师课堂",
+        "navigationStyle": "custom",
+        "app-plus": {
+          "titleNView": false,
+          "scrollIndicator": "none",
+          "pullToRefresh": { "support": false }
+        }
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "三元课堂教师端",
+    "navigationBarBackgroundColor": "#ffffff",
+    "backgroundColor": "#f5f7fa",
+    "app-plus": {
+      "background": "#f5f7fa",
+      "titleNView": false
+    }
+  },
+  "tabBar": {}
+}

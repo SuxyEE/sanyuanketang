@@ -73,7 +73,7 @@ const { renderMarkdown } = useMarkdown()
 const studentStore = useStudentStore()
 
 const props = defineProps<{
-  groupId: number
+  groupId: string
   topic: string
   members: { id: string; name: string }[]
   duration: number

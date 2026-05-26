@@ -8,7 +8,7 @@
     </div>
 
     <div class="panel-body">
-      <p class="hint">输入知识点，AI 现场生成结构化板书（含 LaTeX 公式 / 表格 / 流程图）并推送到大屏。</p>
+      <p class="hint">输入知识点，AI 现场生成结构化板书（含 LaTeX 公式 / 表格 / 流程图）。先在本面板预览，确认无误后再推送到大屏。</p>
 
       <div class="input-group">
         <label>知识点（必填）</label>
@@ -43,7 +43,7 @@
         <button class="btn-primary" :disabled="!topic.trim() || isGenerating" @click="generate">
           <span v-if="isGenerating" class="btn-spinner"></span>
           <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-          {{ isGenerating ? `AI 生成中… (${genElapsed}s)` : '生成并推送大屏' }}
+          {{ isGenerating ? `AI 生成中… (${genElapsed}s)` : (result ? '重新生成预览' : '生成板书预览') }}
         </button>
       </div>
 
@@ -52,7 +52,7 @@
           <strong>{{ result.title }}</strong>
           <span v-if="result.subtitle" class="subtitle">{{ result.subtitle }}</span>
           <span v-if="result.error" class="err-chip">{{ result.error }}</span>
-          <span v-else class="ok-chip">已推送 · {{ result.items.length }} 项</span>
+          <span v-else class="preview-chip">预览仅教师可见 · {{ result.items.length }} 项</span>
         </div>
         <ul class="preview-items">
           <li v-for="(it, i) in result.items" :key="i" class="preview-item-row">
@@ -61,6 +61,14 @@
             <span class="item-snippet">{{ snippetOf(it) }}</span>
           </li>
         </ul>
+        <p class="preview-hint">教师端本地预览。检查无误后点「推送到大屏」才下发。</p>
+        <div class="preview-action-row">
+          <button class="push-btn" :disabled="!hasWb" @click="pushToScreen">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            推送到大屏
+          </button>
+          <button class="discard-btn" @click="discard">放弃预览</button>
+        </div>
       </div>
     </div>
   </div>
@@ -138,22 +146,34 @@ function generate() {
       return
     }
     result.value = r
-    toastSuccess(`已生成「${r.title}」并推送大屏`)
+    toastSuccess(`已生成「${r.title}」预览，请检查后推送大屏`)
   }
   handler = h
   s.on('ai:whiteboard:gen', h)
 
   timeoutId = setTimeout(() => {
     cancelGen()
-    toastError('AI 生成超时（>90s）')
-  }, 90000)
+    toastError('AI 生成超时（>180s）')
+  }, 180000)
 
   s.emit('ai:whiteboard:gen', {
     topic: t,
     extraHint: extraHint.value.trim() || undefined,
-    broadcast: true,
+    broadcast: false,
     ...getAiConfig(),
   })
+}
+
+function pushToScreen() {
+  if (!hasWb.value || !result.value) return
+  const s = socket.value
+  if (!s?.connected) { toastError('未连接服务器'); return }
+  s.emit('ai:whiteboard:show', result.value)
+  toastSuccess(`已推送「${result.value.title}」到大屏`)
+}
+
+function discard() {
+  result.value = null
 }
 
 function hideWb() {
@@ -280,10 +300,53 @@ onUnmounted(() => {
   background: #f6ffed; color: #389e0d;
   border: 1px solid #b7eb8f; border-radius: 8px;
 }
+.preview-chip {
+  font-size: 11px; padding: 2px 8px;
+  background: rgba(22, 119, 255, 0.08);
+  color: var(--primary);
+  border: 1px solid rgba(22, 119, 255, 0.25);
+  border-radius: 8px;
+}
 .err-chip {
   font-size: 11px; padding: 2px 8px;
   background: #fff1f0; color: #cf1322;
   border: 1px solid #ffa39e; border-radius: 8px;
+}
+.preview-hint {
+  font-size: 11px; color: var(--text-muted); margin: 0;
+  text-align: center;
+}
+.preview-action-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+}
+.push-btn {
+  flex: 1.6;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 12px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--primary), #722ed1);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  min-height: 42px;
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+  &:not(:disabled):hover { transform: translateY(-1px); box-shadow: 0 6px 16px -8px rgba(114, 46, 209, 0.4); }
+}
+.discard-btn {
+  flex: 1;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  min-height: 42px;
+  &:hover { border-color: var(--primary); color: var(--primary); }
 }
 
 .preview-items { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }

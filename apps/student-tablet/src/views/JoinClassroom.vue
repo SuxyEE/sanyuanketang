@@ -68,6 +68,7 @@ const canJoin = computed(() =>
 )
 
 function readRoomFromQuery(): string {
+  if (route.query.action === 'teacher' || route.query.role === 'teacher') return ''
   // 兼容多种命名：?room=854160 / ?roomCode=854160 / ?code=854160
   const candidates = [route.query.room, route.query.roomCode, route.query.code]
   for (const c of candidates) {

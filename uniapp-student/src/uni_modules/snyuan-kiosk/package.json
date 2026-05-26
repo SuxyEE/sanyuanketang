@@ -1,0 +1,49 @@
+{
+  "id": "snyuan-kiosk",
+  "displayName": "snyuan-kiosk",
+  "version": "1.0.0",
+  "description": "三元课堂学生端 Android Kiosk（Device Owner / startLockTask / sticky immersive / disable statusbar）原生封装。仅 App-Android 生效，H5/iOS/小程序自动 no-op。",
+  "keywords": ["kiosk", "device-owner", "lock-task", "immersive", "android"],
+  "repository": "",
+  "engines": { "HBuilderX": "^4.0.0" },
+  "main": "utssdk/index.uts",
+  "dcloudext": {
+    "type": "uts",
+    "sale": { "regular": { "price": "0.00" }, "sourcecode": { "price": "0.00" } },
+    "contact": { "qq": "" },
+    "declaration": { "ads": "无", "data": "无", "permissions": "无" },
+    "npmurl": ""
+  },
+  "uni_modules": {
+    "dependencies": [],
+    "encrypt": [],
+    "platforms": {
+      "cloud": { "tcb": "u", "aliyun": "u" },
+      "client": {
+        "Vue": { "vue2": "u", "vue3": "y" },
+        "App": {
+          "app-android": {
+            "minSdkVersion": "24",
+            "targetSdkVersion": "34"
+          },
+          "app-ios": "n"
+        },
+        "H5-mobile": { "Safari": "n", "Android Browser": "n", "微信浏览器(Android)": "n", "QQ浏览器(Android)": "n" },
+        "H5-pc": { "Chrome": "n", "IE": "n", "Edge": "n", "Firefox": "n", "Safari": "n" },
+        "小程序": {
+          "微信": "n",
+          "阿里": "n",
+          "百度": "n",
+          "字节跳动": "n",
+          "QQ": "n",
+          "钉钉": "n",
+          "快手": "n",
+          "飞书": "n",
+          "京东": "n",
+          "小红书": "n"
+        },
+        "快应用": { "华为": "n", "联盟": "n" }
+      }
+    }
+  }
+}

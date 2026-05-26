@@ -13,6 +13,24 @@
         今日课程 · {{ today }}
       </div>
 
+      <div class="screen-bind-card" :class="{ bound: !!screenRoomCode }">
+        <div class="screen-bind-main">
+          <div class="screen-bind-icon">
+            <svg v-if="screenRoomCode" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg>
+            <svg v-else width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
+          </div>
+          <div>
+            <h2>{{ screenRoomCode ? '已绑定大屏' : '先绑定大屏会话' }}</h2>
+            <p>{{ screenRoomCode ? `会话码 ${screenRoomCode}` : 'Web 模拟端请输入大屏显示的 6 位会话码，再选择课程。' }}</p>
+          </div>
+        </div>
+        <div class="screen-bind-form">
+          <input v-model="screenRoomInput" inputmode="numeric" maxlength="6" placeholder="6 位大屏码" @keydown.enter="bindScreenRoom" />
+          <button @click="bindScreenRoom">{{ screenRoomCode ? '更新' : '绑定' }}</button>
+        </div>
+        <p v-if="screenBindError" class="screen-bind-error">{{ screenBindError }}</p>
+      </div>
+
       <div class="course-list">
         <button
           v-for="course in todayCourses"
@@ -51,7 +69,7 @@
         <p class="code-hint">学生在平板端输入此码加入课堂</p>
 
         <div class="qr-area">
-          <canvas ref="qrCanvas" class="qr-canvas"></canvas>
+          <img v-if="qrImage" :src="qrImage" class="qr-image" alt="学生加入二维码" />
           <p class="qr-hint">或扫描二维码加入</p>
         </div>
 
@@ -82,20 +100,35 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useSocket } from '../composables/useSocket'
 
 const router = useRouter()
+const route = useRoute()
+const { connect } = useSocket()
 
 const today = new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' })
 const showRoomCode = ref(false)
 const roomCode = ref('')
 const selectedCourse = ref<any>(null)
-const qrCanvas = ref<HTMLCanvasElement | null>(null)
 
 const hostname = window.location.hostname || 'localhost'
+const serverBase = import.meta.env.VITE_WS_URL || 'http://localhost:3000'
+const initialRoomCode =
+  typeof route.query.room === 'string' && /^\d{6}$/.test(route.query.room)
+    ? route.query.room
+    : typeof route.query.roomCode === 'string' && /^\d{6}$/.test(route.query.roomCode)
+      ? route.query.roomCode
+      : ''
+const screenRoomCode = ref(initialRoomCode)
+const screenRoomInput = ref(initialRoomCode)
+const screenBindError = ref('')
 const studentUrl = ref('')
 const screenUrl = ref('')
+const qrImage = computed(() =>
+  roomCode.value ? `${serverBase}/api/v1/qr/classroom?room=${roomCode.value}&action=student&t=${roomCode.value}` : '',
+)
 
 const todayCourses = ref([
   { id: '1', name: '工业机器人编程实训', subject: '工业机器人技术', class: '机器人2401班', time: '14:30 - 15:15', color: '#1677ff' },
@@ -103,77 +136,42 @@ const todayCourses = ref([
   { id: '3', name: 'PLC控制技术基础', subject: '智能控制技术', class: '智控2402班', time: '16:30 - 17:15', color: '#722ed1' },
 ])
 
-function generateRoomCode() {
-  return String(Math.floor(100000 + Math.random() * 900000))
+function bindScreenRoom() {
+  const code = screenRoomInput.value.trim()
+  if (!/^\d{6}$/.test(code)) {
+    screenBindError.value = '请输入大屏上显示的 6 位会话码'
+    return
+  }
+  screenRoomCode.value = code
+  screenBindError.value = ''
+  connectScreenPreview(code)
 }
 
-async function selectCourse(course: any) {
+function connectScreenPreview(code: string) {
+  const s = connect(code, 'teacher-001', '教师')
+  s.off('room:join:error', handleJoinError)
+  s.on('room:join:error', handleJoinError)
+}
+
+function handleJoinError(data: { message?: string }) {
+  screenBindError.value = data?.message || '接管大屏失败，请确认大屏已打开该会话码'
+}
+
+if (initialRoomCode) {
+  connectScreenPreview(initialRoomCode)
+}
+
+function selectCourse(course: any) {
+  if (!screenRoomCode.value) {
+    screenBindError.value = '请先绑定大屏会话码'
+    return
+  }
   selectedCourse.value = course
-  roomCode.value = generateRoomCode()
+  roomCode.value = screenRoomCode.value
   showRoomCode.value = true
 
   studentUrl.value = `http://${hostname}:3003?room=${roomCode.value}`
   screenUrl.value = `http://${hostname}:3001?room=${roomCode.value}`
-
-  await nextTick()
-  drawQrCode()
-}
-
-function drawQrCode() {
-  const canvas = qrCanvas.value
-  if (!canvas) return
-  const ctx = canvas.getContext('2d')!
-  const size = 160
-  canvas.width = size
-  canvas.height = size
-
-  ctx.fillStyle = '#fff'
-  ctx.fillRect(0, 0, size, size)
-
-  const url = studentUrl.value
-  const cellSize = 4
-  const offset = 16
-
-  ctx.fillStyle = '#1677ff'
-  ctx.fillRect(offset, offset, 28, 28)
-  ctx.fillRect(size - offset - 28, offset, 28, 28)
-  ctx.fillRect(offset, size - offset - 28, 28, 28)
-
-  ctx.fillStyle = '#fff'
-  ctx.fillRect(offset + 4, offset + 4, 20, 20)
-  ctx.fillRect(size - offset - 24, offset + 4, 20, 20)
-  ctx.fillRect(offset + 4, size - offset - 24, 20, 20)
-
-  ctx.fillStyle = '#1677ff'
-  ctx.fillRect(offset + 8, offset + 8, 12, 12)
-  ctx.fillRect(size - offset - 20, offset + 8, 12, 12)
-  ctx.fillRect(offset + 8, size - offset - 20, 12, 12)
-
-  const hash = simpleHash(url)
-  for (let i = 0; i < 20; i++) {
-    for (let j = 0; j < 20; j++) {
-      if ((hash * (i * 20 + j + 1)) % 3 === 0) {
-        const x = 48 + j * cellSize
-        const y = 48 + i * cellSize
-        if (x < size - 48 && y < size - 48) {
-          ctx.fillRect(x, y, cellSize - 1, cellSize - 1)
-        }
-      }
-    }
-  }
-
-  ctx.fillStyle = '#1a1a2e'
-  ctx.font = 'bold 14px sans-serif'
-  ctx.textAlign = 'center'
-  ctx.fillText(roomCode.value, size / 2, size / 2 + 5)
-}
-
-function simpleHash(s: string) {
-  let h = 0
-  for (let i = 0; i < s.length; i++) {
-    h = ((h << 5) - h + s.charCodeAt(i)) | 0
-  }
-  return Math.abs(h)
 }
 
 function enterClassroom() {
@@ -206,6 +204,83 @@ function enterClassroom() {
 .today-label {
   display: flex; align-items: center; gap: 6px;
   font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 12px;
+}
+
+.screen-bind-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 14px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.screen-bind-card.bound {
+  border-color: rgba(82, 196, 26, 0.45);
+  background: linear-gradient(180deg, rgba(82,196,26,0.08), var(--bg-card));
+}
+
+.screen-bind-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+
+  h2 { font-size: 15px; font-weight: 700; color: var(--text-primary); margin: 0 0 3px; }
+  p { font-size: 12px; color: var(--text-secondary); margin: 0; line-height: 1.5; }
+}
+
+.screen-bind-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary);
+  background: var(--primary-light);
+  flex-shrink: 0;
+}
+
+.screen-bind-card.bound .screen-bind-icon {
+  color: #389e0d;
+  background: #f6ffed;
+}
+
+.screen-bind-form {
+  display: flex;
+  gap: 8px;
+
+  input {
+    flex: 1;
+    min-width: 0;
+    height: 42px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0 12px;
+    font-size: 15px;
+    letter-spacing: 0;
+    outline: none;
+    background: var(--bg-page);
+
+    &:focus { border-color: var(--primary); background: #fff; }
+  }
+
+  button {
+    width: 76px;
+    border: none;
+    border-radius: 12px;
+    color: #fff;
+    background: var(--primary);
+    font-weight: 700;
+    cursor: pointer;
+  }
+}
+
+.screen-bind-error {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--danger);
 }
 
 .course-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 32px; }
@@ -263,9 +338,10 @@ function enterClassroom() {
   display: flex; flex-direction: column; align-items: center; gap: 8px;
   padding: 16px 0; border-top: 1px solid var(--border);
 
-  .qr-canvas {
+  .qr-image {
     width: 160px; height: 160px; border-radius: 12px;
     border: 1px solid var(--border);
+    background: #fff;
   }
   .qr-hint { font-size: 11px; color: var(--text-muted); }
 }

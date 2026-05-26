@@ -2,7 +2,7 @@ import { Controller, Post, Get, Body, Sse, Req, MessageEvent } from '@nestjs/com
 import { ApiTags, ApiOperation, ApiExcludeEndpoint } from '@nestjs/swagger'
 import type { Request } from 'express'
 import { Observable } from 'rxjs'
-import { AiService, ChatRequest, QuizGenRequest, GradeRequest, InteractiveGenRequest, WhiteboardGenRequest } from './ai.service'
+import { AiService, ChatRequest, QuizGenRequest, GradeRequest, InteractiveGenRequest, WhiteboardGenRequest, CoursewareGenRequest } from './ai.service'
 import { LlmService } from './llm/llm.service'
 
 @ApiTags('AI')
@@ -51,6 +51,13 @@ export class AiController {
   @ApiOperation({ summary: 'AI 生成结构化"板书"（含 latex/svg/table/callout，给大屏展示）' })
   async generateWhiteboard(@Body() body: WhiteboardGenRequest) {
     const result = await this.aiService.generateWhiteboard(body)
+    return { success: true, data: result }
+  }
+
+  @Post('generate-courseware')
+  @ApiOperation({ summary: 'AI 生成"演示课件"结构化大纲（slides[]，给大屏展示）' })
+  async generateCourseware(@Body() body: CoursewareGenRequest) {
+    const result = await this.aiService.generateCourseware(body)
     return { success: true, data: result }
   }
 

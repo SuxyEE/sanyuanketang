@@ -2,7 +2,7 @@ export type UserRole = 'teacher' | 'student' | 'admin'
 
 export type DeviceType = 'screen' | 'tablet' | 'pc' | 'phone'
 
-export type ClientType = 'teacher-screen' | 'teacher-tablet' | 'student-tablet' | 'admin'
+export type ClientType = 'teacher-screen' | 'teacher-tablet' | 'teacher-uniapp' | 'student-tablet' | 'admin'
 
 export type LessonStatus = 'pending' | 'ongoing' | 'paused' | 'ended'
 

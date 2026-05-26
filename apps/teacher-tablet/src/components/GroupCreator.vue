@@ -72,7 +72,10 @@
 
     <div class="panel-actions">
       <button class="btn-secondary" @click="$emit('close')">取消</button>
-      <button class="btn-primary" @click="startDiscussion">
+      <button v-if="store.activeDiscussion" class="btn-danger" @click="endDiscussion">
+        结束当前分组讨论
+      </button>
+      <button v-else class="btn-primary" @click="startDiscussion">
         开始分组讨论
       </button>
     </div>
@@ -83,6 +86,8 @@
 import { ref, computed } from 'vue'
 import { icons } from '@snyuan/shared'
 import { useClassroomStore } from '../stores/classroom'
+import { useSocket } from '../composables/useSocket'
+import { useToast } from '../composables/useToast'
 
 const emit = defineEmits<{
   close: []
@@ -90,6 +95,8 @@ const emit = defineEmits<{
 }>()
 
 const store = useClassroomStore()
+const { socket } = useSocket()
+const { toastInfo, toastError } = useToast()
 const strategy = ref('random')
 const groupCount = ref(2)
 const topic = ref('')
@@ -113,6 +120,18 @@ function startDiscussion() {
     topic: topic.value,
     duration: duration.value,
   })
+  emit('close')
+}
+
+function endDiscussion() {
+  const s = socket.value
+  if (!s?.connected) {
+    toastError('未连接服务器')
+    return
+  }
+  s.emit('group:dissolve', {})
+  store.setActiveDiscussion(null)
+  toastInfo('已结束分组讨论')
   emit('close')
 }
 </script>
@@ -356,6 +375,21 @@ function startDiscussion() {
   min-height: 48px;
 
   &:active { background: var(--bg-page); }
+}
+
+.btn-danger {
+  flex: 1.5;
+  padding: 14px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, #cf1322, #ff4d4f);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 48px;
+
+  &:hover { background: linear-gradient(135deg, #a8071a, #cf1322); }
 }
 
 .btn-primary {

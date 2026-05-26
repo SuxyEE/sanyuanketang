@@ -114,24 +114,38 @@ function summarizeAdminEvent(evt: { event: string; data: any; lessonId?: string 
 
 export function useAdminSocket() {
   if (!socket) {
+    const token = localStorage.getItem('admin_token') || ''
+    const accessCode = localStorage.getItem('snyuan_access') || ''
     socket = io(`${WS_URL}/classroom`, {
       transports: ['websocket'],
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 2000,
+      // 把登录后拿到的 JWT 和（可选）站点访问码一并带上，让后端 WS_AUTH_MODE=required 也能通
+      auth: { token, accessCode },
     })
 
     socket.on('connect', () => {
       isConnected.value = true
+      const adminName = localStorage.getItem('admin_user_name') || '管理员'
       socket?.emit('room:join', {
         lessonId: 'admin-monitor',
         userId: 'admin-001',
-        userName: '管理员',
+        userName: adminName,
         role: 'admin',
         clientType: 'admin',
       })
       socket?.emit('admin:subscribe')
       socket?.emit('admin:rooms')
+    })
+
+    // 后端 WS 鉴权失败 → 跳回登录页
+    socket.on('error:auth', (data: { code?: string; message?: string }) => {
+      console.warn('[admin-socket] auth error', data)
+      localStorage.removeItem('admin_token')
+      if (window.location.pathname !== '/login') {
+        window.location.assign('/login')
+      }
     })
 
     socket.on('disconnect', () => { isConnected.value = false })

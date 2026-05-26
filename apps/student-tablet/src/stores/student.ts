@@ -68,6 +68,16 @@ export const useStudentStore = defineStore('student', () => {
   const showAttendance = ref(false)
   const attendanceSigned = ref(false)
   const attendanceMode = ref('')
+  const attendanceConfig = ref<{
+    requirePhoto: boolean
+    requireLocation: boolean
+    radius: number
+    teacherLocation?: { latitude: number; longitude: number }
+  }>({
+    requirePhoto: false,
+    requireLocation: false,
+    radius: 50,
+  })
 
   const groupData = ref<GroupData | null>(null)
   const myGroupId = ref('')
@@ -155,7 +165,20 @@ export const useStudentStore = defineStore('student', () => {
   function dissolveGroups() {
     groupData.value = null
     myGroupId.value = ''
-    viewState.value = 'listening'
+    pendingGroups.value = null
+    // 只有当前正在「分组讨论」视图时才切回听课；测验/锁屏/AI 实践时保留当前视图
+    if (viewState.value === 'discussion') {
+      viewState.value = 'listening'
+    }
+  }
+
+  /** 教师下发 AI 实践结束 → 把 viewState 从 ai_practice 还原 */
+  function endAiPractice() {
+    if (viewState.value === 'ai_practice') {
+      viewState.value = previousViewState.value === 'ai_practice'
+        ? 'listening'
+        : (previousViewState.value || 'listening')
+    }
   }
 
   function showBroadcastMsg(msg: string, from?: string) {
@@ -229,6 +252,7 @@ export const useStudentStore = defineStore('student', () => {
     showAttendance,
     attendanceSigned,
     attendanceMode,
+    attendanceConfig,
     groupData,
     myGroupId,
     pendingGroups,
@@ -249,6 +273,7 @@ export const useStudentStore = defineStore('student', () => {
     unlockScreen,
     setGroups,
     dissolveGroups,
+    endAiPractice,
     showBroadcastMsg,
     dismissBroadcast,
     startCompete,

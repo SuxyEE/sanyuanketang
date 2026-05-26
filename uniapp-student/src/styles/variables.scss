@@ -1,0 +1,286 @@
+/* ============================================================================
+ * sanyuanketang · 学生端 Design Tokens
+ *
+ * 设计源：ui-ux-pro-max SKILL 检查清单
+ * 单位：rpx（uniapp 标准；750 设计宽下 1rpx ≈ 0.5px）
+ *
+ * 分层：
+ *   1. Primitives 原始值（never used in components directly）
+ *   2. Semantic   语义令牌（components 只引用这些）
+ *   3. Component  组件级 token（仅在原子组件内重新映射）
+ *
+ * 主题：light（默认） / dark（prefers-color-scheme + .theme-dark 兜底）
+ * ========================================================================== */
+
+/* ---------- 1. 原始色板（Primitives，仅给 :root 用，不直接进 component） ---------- */
+:root {
+  /* Blue — brand */
+  --p-blue-50:  #f0f7ff;
+  --p-blue-100: #d6e7ff;
+  --p-blue-200: #adc9ff;
+  --p-blue-300: #84a9ff;
+  --p-blue-400: #5b89ff;
+  --p-blue-500: #2f6bff;  /* 主品牌 */
+  --p-blue-600: #2459d9;
+  --p-blue-700: #1b48b3;
+  --p-blue-800: #14378c;
+  --p-blue-900: #0b2466;
+
+  /* Purple — secondary（AI 相关） */
+  --p-purple-50:  #f5f0ff;
+  --p-purple-100: #e4d6ff;
+  --p-purple-300: #b899ff;
+  --p-purple-500: #7c4dff;
+  --p-purple-700: #5a2dd9;
+
+  /* Green — success */
+  --p-green-50:  #e8f9ed;
+  --p-green-300: #75d391;
+  --p-green-500: #20a546;
+  --p-green-700: #157a33;
+
+  /* Amber — warning */
+  --p-amber-50:  #fff7e0;
+  --p-amber-300: #ffce5c;
+  --p-amber-500: #f5a623;
+  --p-amber-700: #b87814;
+
+  /* Red — danger */
+  --p-red-50:  #fdecec;
+  --p-red-300: #f08585;
+  --p-red-500: #e23d3d;
+  --p-red-700: #b02525;
+
+  /* Neutral — grayscale */
+  --p-gray-0:   #ffffff;
+  --p-gray-25:  #fafbfc;
+  --p-gray-50:  #f4f6f8;
+  --p-gray-100: #e9ecef;
+  --p-gray-200: #d4d8dd;
+  --p-gray-300: #b4bac1;
+  --p-gray-400: #8a9099;
+  --p-gray-500: #5e6470;
+  --p-gray-600: #43485a;
+  --p-gray-700: #2a2f3d;
+  --p-gray-800: #181c27;
+  --p-gray-900: #0a0d15;
+
+  /* ---------- 2. 语义令牌（Semantic）— LIGHT ---------- */
+
+  /* —— Brand —— */
+  --color-primary:           var(--p-blue-500);
+  --color-primary-hover:     var(--p-blue-600);
+  --color-primary-active:    var(--p-blue-700);
+  --color-primary-on:        var(--p-gray-0);     /* primary 上的文字 */
+  --color-primary-container: var(--p-blue-50);    /* 浅色容器（chip / 选中态背景） */
+  --color-on-primary-container: var(--p-blue-700);
+
+  --color-secondary:           var(--p-purple-500);
+  --color-secondary-hover:     var(--p-purple-700);
+  --color-secondary-on:        var(--p-gray-0);
+  --color-secondary-container: var(--p-purple-50);
+  --color-on-secondary-container: var(--p-purple-700);
+
+  /* —— Semantic state —— */
+  --color-success:           var(--p-green-500);
+  --color-success-container: var(--p-green-50);
+  --color-on-success-container: var(--p-green-700);
+
+  --color-warning:           var(--p-amber-500);
+  --color-warning-container: var(--p-amber-50);
+  --color-on-warning-container: var(--p-amber-700);
+
+  --color-danger:            var(--p-red-500);
+  --color-danger-container:  var(--p-red-50);
+  --color-on-danger-container: var(--p-red-700);
+
+  /* —— Surface —— */
+  --color-bg:                  var(--p-gray-50);  /* 全局页面背景 */
+  --color-surface:             var(--p-gray-0);   /* 卡片 / 抽屉 */
+  --color-surface-variant:     var(--p-gray-25);  /* 输入框 / 卡内浅块 */
+  --color-surface-raised:      var(--p-gray-0);   /* 浮层 / 弹窗 */
+  --color-surface-disabled:    var(--p-gray-100);
+
+  /* —— On-surface text —— */
+  --color-text-primary:        var(--p-gray-900); /* 主要正文 */
+  --color-text-secondary:      var(--p-gray-600); /* 次要文字 */
+  --color-text-tertiary:       var(--p-gray-400); /* 辅助 / 占位 */
+  --color-text-disabled:       var(--p-gray-300);
+  --color-text-on-color:       var(--p-gray-0);   /* 彩色块上的白字 */
+
+  /* —— Border / divider —— */
+  --color-outline:             var(--p-gray-200); /* 主分割线 */
+  --color-outline-variant:     var(--p-gray-100); /* 弱分割线 */
+  --color-outline-focus:       var(--p-blue-500);
+
+  /* —— Special —— */
+  --color-scrim:               rgba(10, 13, 21, 0.5);     /* 模态遮罩 */
+  --color-scrim-heavy:         rgba(10, 13, 21, 0.92);    /* 锁屏遮罩 · 近不透明，
+                                                              确保下方课件不会透出来影响白字可读性 */
+  --color-state-overlay-press: rgba(10, 13, 21, 0.08);    /* 通用 press 反馈 */
+  --color-state-overlay-hover: rgba(10, 13, 21, 0.04);
+
+  /* ---------- 3. 间距系统（基于 8rpx 节奏，对应 4dp Material 标准） ---------- */
+  --space-0:  0;
+  --space-1:  4rpx;     /*  2dp 微缝 */
+  --space-2:  8rpx;     /*  4dp */
+  --space-3:  16rpx;    /*  8dp */
+  --space-4:  24rpx;    /* 12dp */
+  --space-5:  32rpx;    /* 16dp */
+  --space-6:  40rpx;    /* 20dp */
+  --space-7:  48rpx;    /* 24dp */
+  --space-8:  64rpx;    /* 32dp */
+  --space-9:  80rpx;    /* 40dp */
+  --space-10: 96rpx;    /* 48dp */
+  --space-12: 128rpx;   /* 64dp */
+
+  /* ---------- 4. 圆角 ---------- */
+  --radius-xs:   8rpx;
+  --radius-sm:   12rpx;
+  --radius-md:   16rpx;
+  --radius-lg:   20rpx;
+  --radius-xl:   28rpx;
+  --radius-2xl:  36rpx;
+  --radius-pill: 9999rpx;
+  --radius-full: 50%;
+
+  /* ---------- 5. 阴影（5 级 elevation；token-driven） ---------- */
+  --elevation-0: none;
+  --elevation-1: 0 2rpx 6rpx rgba(10, 13, 21, 0.04), 0 1rpx 2rpx rgba(10, 13, 21, 0.06);
+  --elevation-2: 0 4rpx 12rpx rgba(10, 13, 21, 0.06), 0 2rpx 4rpx rgba(10, 13, 21, 0.04);
+  --elevation-3: 0 8rpx 24rpx rgba(10, 13, 21, 0.08), 0 4rpx 8rpx rgba(10, 13, 21, 0.04);
+  --elevation-4: 0 16rpx 40rpx rgba(10, 13, 21, 0.12), 0 8rpx 16rpx rgba(10, 13, 21, 0.06);
+  --elevation-5: 0 32rpx 64rpx rgba(10, 13, 21, 0.16);
+
+  /* ---------- 6. 字号 / 字重 / 行高 ---------- */
+  /* 平板 + 手机通用，对应 Material 5 type roles */
+  --font-display:     64rpx;  /* 巨型 hero */
+  --font-headline:    48rpx;  /* 主标题 */
+  --font-title-lg:    40rpx;  /* 大标题 */
+  --font-title:       34rpx;  /* 通用标题 */
+  --font-title-sm:    30rpx;  /* 小标题 / Card 标题 */
+  --font-body-lg:     30rpx;  /* 大正文 */
+  --font-body:        28rpx;  /* 标准正文 */
+  --font-label:       26rpx;  /* 按钮 / 标签 */
+  --font-caption:     22rpx;  /* 辅助 / 时间戳 */
+  --font-overline:    20rpx;  /* 全大写小标 */
+
+  --font-weight-regular:  400;
+  --font-weight-medium:   500;
+  --font-weight-semibold: 600;
+  --font-weight-bold:     700;
+
+  --line-height-tight:  1.25;
+  --line-height-snug:   1.4;
+  --line-height-normal: 1.55;
+  --line-height-loose:  1.75;
+
+  /* ---------- 7. 动效 ---------- */
+  --duration-fast:  120ms;
+  --duration-base:  180ms;
+  --duration-med:   240ms;
+  --duration-slow:  320ms;
+
+  /* easing — Material Emphasized 3 套 */
+  --ease-standard:    cubic-bezier(0.2, 0, 0, 1);
+  --ease-decelerate:  cubic-bezier(0, 0, 0.2, 1);   /* enter */
+  --ease-accelerate:  cubic-bezier(0.3, 0, 1, 1);   /* exit */
+  --ease-emphasized:  cubic-bezier(0.2, 0, 0, 1.1); /* spring-ish */
+
+  /* ---------- 8. z-index 层级 ---------- */
+  --z-base:        0;
+  --z-raised:      10;
+  --z-sticky:      100;
+  --z-overlay:     200;   /* in-page overlay（toast 容器、tooltip） */
+  --z-drawer:      400;   /* 侧抽屉 */
+  --z-modal:       500;   /* 中央模态 */
+  --z-fullscreen:  600;   /* 全屏覆盖（AI 互动场景） */
+  --z-toast:       1000;
+  --z-lock:        2000;  /* 锁屏，最顶 */
+
+  /* ---------- 9. 触摸目标 ---------- */
+  --touch-min: 88rpx;  /* 44pt × 2 = 88rpx，全局触摸目标下限 */
+
+  /* ---------- 10. safe-area 兜底（uniapp App 端会自动注入 env(...)） ---------- */
+  --safe-top:    env(safe-area-inset-top, 0);
+  --safe-right:  env(safe-area-inset-right, 0);
+  --safe-bottom: env(safe-area-inset-bottom, 0);
+  --safe-left:   env(safe-area-inset-left, 0);
+}
+
+/* ============================================================================
+ * Dark theme — 通过 prefers-color-scheme 自动 + .theme-dark class 强制
+ * 设计原则：去饱和提升的色调（Material Tonal），不直接反色
+ * ========================================================================== */
+
+@mixin dark-theme {
+  --color-primary:           var(--p-blue-300);
+  --color-primary-hover:     var(--p-blue-200);
+  --color-primary-active:    var(--p-blue-100);
+  --color-primary-on:        var(--p-blue-900);
+  --color-primary-container: rgba(91, 137, 255, 0.16);
+  --color-on-primary-container: var(--p-blue-200);
+
+  --color-secondary:           var(--p-purple-300);
+  --color-secondary-hover:     var(--p-purple-100);
+  --color-secondary-on:        var(--p-purple-700);
+  --color-secondary-container: rgba(184, 153, 255, 0.16);
+  --color-on-secondary-container: var(--p-purple-100);
+
+  --color-success:           var(--p-green-300);
+  --color-success-container: rgba(117, 211, 145, 0.16);
+  --color-on-success-container: var(--p-green-300);
+
+  --color-warning:           var(--p-amber-300);
+  --color-warning-container: rgba(255, 206, 92, 0.16);
+  --color-on-warning-container: var(--p-amber-300);
+
+  --color-danger:            var(--p-red-300);
+  --color-danger-container:  rgba(240, 133, 133, 0.16);
+  --color-on-danger-container: var(--p-red-300);
+
+  --color-bg:               var(--p-gray-900);
+  --color-surface:          var(--p-gray-800);
+  --color-surface-variant:  var(--p-gray-700);
+  --color-surface-raised:   #1f2330;
+  --color-surface-disabled: var(--p-gray-700);
+
+  --color-text-primary:    #f1f3f5;
+  --color-text-secondary:  #c3c8d2;
+  --color-text-tertiary:   #8a9099;
+  --color-text-disabled:   #5e6470;
+  --color-text-on-color:   var(--p-gray-900);
+
+  --color-outline:         #3a4053;
+  --color-outline-variant: #2a2f3d;
+  --color-outline-focus:   var(--p-blue-300);
+
+  --color-scrim:               rgba(0, 0, 0, 0.6);
+  --color-scrim-heavy:         rgba(0, 0, 0, 0.95);
+  --color-state-overlay-press: rgba(255, 255, 255, 0.08);
+  --color-state-overlay-hover: rgba(255, 255, 255, 0.04);
+
+  --elevation-1: 0 2rpx 6rpx rgba(0, 0, 0, 0.32), 0 1rpx 2rpx rgba(0, 0, 0, 0.4);
+  --elevation-2: 0 4rpx 12rpx rgba(0, 0, 0, 0.36);
+  --elevation-3: 0 8rpx 24rpx rgba(0, 0, 0, 0.42);
+  --elevation-4: 0 16rpx 40rpx rgba(0, 0, 0, 0.48);
+  --elevation-5: 0 32rpx 64rpx rgba(0, 0, 0, 0.52);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root { @include dark-theme; }
+}
+
+.theme-dark { @include dark-theme; }
+
+/* ============================================================================
+ * Reduced motion — 用户开启后所有过渡缩短到 ~0（保留必要的 100ms 以提供反馈）
+ * ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 1ms;
+    --duration-base: 1ms;
+    --duration-med:  1ms;
+    --duration-slow: 1ms;
+  }
+}

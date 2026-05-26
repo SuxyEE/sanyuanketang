@@ -1,4 +1,7 @@
 export * from './types'
 export * from './events'
+export * from './wsEvents'
 export * from './constants'
+export { icons } from './icons'
+export type { IconName } from './icons'
 export * from './icons'

@@ -29,23 +29,35 @@
     </div>
 
     <div class="panel-body" v-if="mode === 'chat'">
-      <p class="hint">开启后，学生端将切换到AI助手模式，学生可以自由向AI提问并进行实践探索。</p>
+      <div v-if="store.aiPractice" class="active-banner">
+        <div class="active-banner-head">
+          <span class="active-dot"></span>
+          <span>正在进行 AI 实践</span>
+        </div>
+        <p class="active-banner-text">{{ store.aiPractice.topic }}</p>
+        <button class="end-btn" @click="endPractice">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+          结束 AI 实践（学生回到课件）
+        </button>
+      </div>
+      <p v-else class="hint">开启后，学生端将切换到AI助手模式，学生可以自由向AI提问并进行实践探索。结束后学生会自动回到课件。</p>
 
       <div class="input-group">
         <label>实践主题</label>
-        <input v-model="topic" placeholder="例如：逆向工程扫描方法比较" />
+        <input v-model="topic" :disabled="!!store.aiPractice" placeholder="例如：逆向工程扫描方法比较" />
       </div>
 
       <div class="input-group">
         <label>AI角色提示词</label>
         <textarea
           v-model="prompt"
+          :disabled="!!store.aiPractice"
           placeholder="定义AI助手在本次实践中的角色和回答范围..."
           rows="4"
         ></textarea>
       </div>
 
-      <div class="preset-section">
+      <div class="preset-section" v-if="!store.aiPractice">
         <h4>快捷模板</h4>
         <div class="preset-list">
           <button
@@ -60,7 +72,7 @@
         </div>
       </div>
 
-      <button class="start-btn" :disabled="!topic.trim()" @click="startPractice">
+      <button v-if="!store.aiPractice" class="start-btn" :disabled="!topic.trim()" @click="startPractice">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 12l5-3"/></svg>
         下发AI实践任务
       </button>
@@ -110,7 +122,7 @@
         <div class="preview-head">
           <strong>{{ interactiveResult.title }}</strong>
           <span v-if="interactiveResult.error" class="err-chip">{{ interactiveResult.error }}</span>
-          <span v-else class="ok-chip">已推送 · 清洗 {{ totalSanitizeRemoved }} 项不安全内容</span>
+          <span v-else class="preview-chip">预览仅教师可见 · 已清洗 {{ totalSanitizeRemoved }} 项不安全内容</span>
         </div>
         <p class="preview-desc">{{ interactiveResult.description }}</p>
         <div
@@ -130,7 +142,14 @@
           :srcdoc="interactiveResult.html"
           title="AI 实践预览"
         ></iframe>
-        <p class="preview-hint">这是教师端预览。学生平板已同步收到。</p>
+        <p class="preview-hint">教师端本地预览。检查无误后点「推送给学生」才下发。</p>
+        <div class="preview-action-row">
+          <button class="push-btn" @click="pushInteractiveToStudents">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            推送给学生
+          </button>
+          <button class="discard-btn" @click="discardInteractivePreview">放弃预览</button>
+        </div>
       </div>
     </div>
   </div>
@@ -142,12 +161,14 @@ import { icons } from '@snyuan/shared'
 import { useSocket } from '../composables/useSocket'
 import { useToast } from '../composables/useToast'
 import { useAiSettings } from '../composables/useAiSettings'
+import { useClassroomStore } from '../stores/classroom'
 
 const emit = defineEmits<{ close: []; start: [data: { topic: string; prompt: string }] }>()
 
 const { socket } = useSocket()
-const { toastSuccess, toastError } = useToast()
+const { toastSuccess, toastError, toastInfo } = useToast()
 const { getRequestConfig: getAiConfig } = useAiSettings()
+const store = useClassroomStore()
 
 const mode = ref<'chat' | 'interactive'>('chat')
 
@@ -192,6 +213,17 @@ function startPractice() {
   emit('start', { topic: topic.value.trim(), prompt: prompt.value.trim() })
   isSent.value = true
   setTimeout(() => { isSent.value = false }, 3000)
+}
+
+function endPractice() {
+  const s = socket.value
+  if (!s?.connected) {
+    toastError('未连接服务器')
+    return
+  }
+  s.emit('ai:practice:end', {})
+  store.setAiPractice(null)
+  toastInfo('已结束 AI 实践')
 }
 
 // === HTML interactive 模式 ===
@@ -265,22 +297,46 @@ function generateInteractive() {
       return
     }
     interactiveResult.value = result
-    toastSuccess(`已生成「${result.title}」并推送学生平板`)
+    toastSuccess(`已生成「${result.title}」预览，请检查后推送给学生`)
   }
   interactiveHandler = handler
   s.on('ai:interactive:gen', handler)
 
   interactiveTimeoutId = setTimeout(() => {
     cancelInteractiveGen()
-    toastError('AI 生成超时（>120s），请检查 AI 设置或稍后重试')
-  }, 120000)
+    toastError('AI 生成超时（>180s），请检查 AI 设置或稍后重试')
+  }, 180000)
 
   s.emit('ai:interactive:gen', {
     topic: t,
     extraHint: interactiveHint.value.trim() || undefined,
-    broadcast: true,
+    broadcast: false,
     ...getAiConfig(),
   })
+}
+
+function pushInteractiveToStudents() {
+  if (!interactiveResult.value?.html) {
+    toastError('当前无可推送的预览，请先生成')
+    return
+  }
+  const s = socket.value
+  if (!s?.connected) {
+    toastError('未连接服务器')
+    return
+  }
+  const topic = interactiveResult.value.title || interactiveTopic.value.trim()
+  s.emit('ai:practice:start', {
+    topic,
+    prompt: interactiveHint.value.trim(),
+    startedAt: new Date().toISOString(),
+  })
+  s.emit('ai:interactive:show', interactiveResult.value)
+  toastSuccess(`已下发「${topic}」到所有学生平板`)
+}
+
+function discardInteractivePreview() {
+  interactiveResult.value = null
 }
 
 onUnmounted(() => {
@@ -312,6 +368,60 @@ onUnmounted(() => {
 .panel-body { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
 
 .hint { font-size: 13px; color: var(--text-muted); line-height: 1.6; }
+
+.active-banner {
+  padding: 14px 16px;
+  background: linear-gradient(135deg, rgba(207, 19, 34, 0.05), rgba(207, 19, 34, 0.02));
+  border: 1px solid rgba(207, 19, 34, 0.18);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.active-banner-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #cf1322;
+}
+
+.active-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #cf1322;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+.active-banner-text {
+  font-size: 14px;
+  color: var(--text-primary);
+  margin: 0;
+  font-weight: 500;
+  word-break: break-word;
+}
+
+.end-btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 12px;
+  background: #cf1322;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 44px;
+  &:hover { background: #a8071a; }
+}
 
 .input-group {
   label { font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px; display: block; }
@@ -420,6 +530,14 @@ onUnmounted(() => {
   background: #f6ffed; color: #389e0d;
   border: 1px solid #b7eb8f;
 }
+.preview-chip {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: rgba(22, 119, 255, 0.08);
+  color: var(--primary);
+  border: 1px solid rgba(22, 119, 255, 0.25);
+}
 .err-chip {
   font-size: 11px;
   padding: 2px 8px;
@@ -460,6 +578,41 @@ onUnmounted(() => {
 .preview-hint {
   font-size: 11px; color: var(--text-muted); margin: 0;
   text-align: center;
+}
+
+.preview-action-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.push-btn {
+  flex: 1.6;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 12px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--primary), #4096ff);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 44px;
+  &:hover { transform: translateY(-1px); box-shadow: 0 6px 16px -8px rgba(22, 119, 255, 0.4); }
+  &:active { transform: scale(0.98); }
+}
+
+.discard-btn {
+  flex: 1;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  min-height: 44px;
+  &:hover { border-color: var(--primary); color: var(--primary); }
 }
 
 .btn-spinner {

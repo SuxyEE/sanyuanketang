@@ -17,7 +17,10 @@ out/
 logs/
 
 # 编辑器
-.cursor/
+# 例外：.cursor/rules/ 内的项目级 AI 规则必须入库（如 pchat.mdc 强制持续对话循环）
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
 .vscode/
 *.swp
 *.swo

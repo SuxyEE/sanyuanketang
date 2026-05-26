@@ -25,6 +25,12 @@ export interface AiSettings {
   configured: boolean
   /** 上次修改时间 */
   updatedAt: number
+  /**
+   * 配置时记录的"教师标识"。
+   * 同一台平板被换人登录后，UI 会高亮警告：当前生效的 API key 来自上一位教师，
+   * 防止误用他人 key 计费。空字符串 = 老数据 / 匿名教师。
+   */
+  ownerName: string
 }
 
 const STORAGE_KEY = 'snyuan_ai_settings_v1'
@@ -40,6 +46,7 @@ function loadFromStorage(): AiSettings {
       baseUrl: String(parsed.baseUrl || ''),
       configured: !!parsed.configured,
       updatedAt: Number(parsed.updatedAt) || 0,
+      ownerName: String(parsed.ownerName || ''),
     }
   } catch {
     return defaultSettings()
@@ -47,7 +54,7 @@ function loadFromStorage(): AiSettings {
 }
 
 function defaultSettings(): AiSettings {
-  return { model: '', apiKey: '', baseUrl: '', configured: false, updatedAt: 0 }
+  return { model: '', apiKey: '', baseUrl: '', configured: false, updatedAt: 0, ownerName: '' }
 }
 
 // 进程内单例（同一 Composer 中所有 useAiSettings() 共享同一份状态）
@@ -58,6 +65,7 @@ export function useAiSettings() {
     if ('model' in patch) state.model = patch.model || ''
     if ('apiKey' in patch) state.apiKey = patch.apiKey || ''
     if ('baseUrl' in patch) state.baseUrl = patch.baseUrl || ''
+    if ('ownerName' in patch) state.ownerName = patch.ownerName || ''
     state.configured = true
     state.updatedAt = Date.now()
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
@@ -81,6 +89,18 @@ export function useAiSettings() {
   const hasCustomModel = computed(() => !!state.model)
   const hasCustomKey = computed(() => !!state.apiKey)
 
+  /**
+   * 给定当前教师名（来自 store），判定当前持有的 AI 设置是否属于"上一位教师残留"。
+   * - 未配置或 ownerName 为空（老数据兼容）→ 不告警
+   * - ownerName 与当前不一致 → 告警
+   * 调用方（AiSettings.vue）据此显示一条高亮 banner。
+   */
+  function isOwnedByOther(currentName: string): boolean {
+    if (!state.configured) return false
+    if (!state.ownerName) return false
+    return state.ownerName.trim() !== (currentName || '').trim()
+  }
+
   return {
     settings: readonly(state),
     isConfigured,
@@ -89,5 +109,6 @@ export function useAiSettings() {
     save,
     reset,
     getRequestConfig,
+    isOwnedByOther,
   }
 }

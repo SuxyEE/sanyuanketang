@@ -1,12 +1,7 @@
 <template>
   <div class="student-main">
-    <transition name="toast">
-      <div v-if="toastMsg" class="toast-notification" :class="toastType">
-        <svg v-if="toastType === 'success'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-        <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        <span>{{ toastMsg }}</span>
-      </div>
-    </transition>
+    <!-- 注：Toast 已迁移到全局 ToastContainer（App.vue 中挂载），
+         统一走 useToast() composable，避免在页面内插一段固定节点干扰布局。 -->
 
     <div v-if="store.viewState === 'locked'" class="lock-overlay" role="alert" aria-live="assertive">
       <div class="lock-content">
@@ -278,6 +273,11 @@
     <SignInPopup
       :visible="store.showAttendance && !store.attendanceSigned"
       :course-name="store.courseName"
+      :mode="store.attendanceMode"
+      :require-photo="store.attendanceConfig.requirePhoto"
+      :require-location="store.attendanceConfig.requireLocation"
+      :radius="store.attendanceConfig.radius"
+      :teacher-location="store.attendanceConfig.teacherLocation"
       @signed="handleSignIn"
       @close="store.showAttendance = false"
     />
@@ -337,6 +337,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useStudentStore } from '../stores/student'
 import { useSocket } from '../composables/useSocket'
 import { useMarkdown } from '../composables/useMarkdown'
+import { useToast } from '../composables/useToast'
 import { icons } from '@snyuan/shared'
 import AiChatDrawer from '../components/AiChatDrawer.vue'
 import GroupDiscussionPanel from '../components/GroupDiscussionPanel.vue'
@@ -363,24 +364,48 @@ const showNotesPanel = ref(false)
 const showAskInput = ref(false)
 const notesRef = ref<InstanceType<typeof NotesPanel> | null>(null)
 const askText = ref('')
-const toastMsg = ref('')
 const aiInteractive = ref<AiInteractiveScene | null>(null)
-const toastType = ref<'success' | 'info'>('success')
-let toastTimer: ReturnType<typeof setTimeout> | null = null
 const quizCountdown = ref(0)
 const competeCountdown = ref(0)
 let competeTimer: ReturnType<typeof setInterval> | null = null
 const hasGrabbed = ref(false)
 
-function showToast(msg: string, type: 'success' | 'info' = 'success') {
-  if (toastTimer) clearTimeout(toastTimer)
-  toastMsg.value = msg
-  toastType.value = type
-  toastTimer = setTimeout(() => { toastMsg.value = '' }, 2500)
-}
+const { showToast } = useToast()
 let quizTimer: ReturnType<typeof setInterval> | null = null
 
 const lessonId = (route.query.room as string) || 'demo-lesson-001'
+
+function applyLessonStart(data: { courseName?: string; lessonTitle?: string; resetState?: boolean } = {}) {
+  if (data.courseName) store.courseName = data.courseName
+  if (data.lessonTitle) store.lessonTitle = data.lessonTitle
+  if (data.resetState === false) return
+
+  stopQuizTimer()
+  stopCompete()
+  store.currentSlide = 1
+  store.totalSlides = 0
+  store.slides = []
+  store.viewState = 'listening'
+  store.previousViewState = 'listening'
+  store.quizQuestions = []
+  store.currentQuestionIndex = 0
+  store.selectedAnswers = {}
+  store.activeTaskId = ''
+  store.showAttendance = false
+  store.attendanceSigned = false
+  store.groupData = null
+  store.myGroupId = ''
+  store.pendingGroups = null
+  store.showBroadcast = false
+  store.rolledStudent = null
+  store.showRollCall = false
+  store.competeQuestion = ''
+  store.competeTimeLimit = 0
+  store.competeStartTime = 0
+  store.competeResult = null
+  aiInteractive.value = null
+  hasGrabbed.value = false
+}
 
 const handlers = {
   onConnect: () => { store.isOnline = true },
@@ -388,6 +413,7 @@ const handlers = {
   onRoomJoined: (data: any) => {
     store.currentSlide = data.currentSlide || 1
     store.totalSlides = data.totalSlides || 0
+    if (data.lessonMeta) applyLessonStart({ ...data.lessonMeta, resetState: false })
     if (data.isLocked) store.lockScreen()
     if (data.activeQuiz && data.activeQuiz.status === 'in_progress') {
       store.setQuiz({
@@ -416,7 +442,13 @@ const handlers = {
       }
     }
     if (data.activeAttendance && data.activeAttendance.active) {
-      store.attendanceMode = data.activeAttendance.mode
+      store.attendanceMode = data.activeAttendance.mode || 'normal'
+      store.attendanceConfig = {
+        requirePhoto: data.activeAttendance.requirePhoto === true,
+        requireLocation: data.activeAttendance.requireLocation === true,
+        radius: data.activeAttendance.radius || 50,
+        teacherLocation: data.activeAttendance.teacherLocation,
+      }
       if (data.activeAttendance.alreadySigned) {
         store.attendanceSigned = true
         store.showAttendance = false
@@ -424,6 +456,11 @@ const handlers = {
         store.showAttendance = true
       }
     }
+  },
+  onJoinError: (data: { message?: string }) => {
+    store.isOnline = false
+    showToast(data?.message || '加入课堂失败', 'info')
+    setTimeout(() => router.replace({ name: 'JoinClassroom', query: { room: lessonId } }), 1200)
   },
   onSlideGoto: (data: { index: number; total: number }) => {
     store.currentSlide = data.index
@@ -479,8 +516,21 @@ const handlers = {
     if (store.viewState === 'discussion') showToast('分组讨论已结束', 'info')
     store.dissolveGroups()
   },
-  onAttendanceStart: (data: { mode: string; duration: number }) => {
-    store.attendanceMode = data.mode
+  onAttendanceStart: (data: {
+    mode: string
+    duration: number
+    requirePhoto?: boolean
+    requireLocation?: boolean
+    radius?: number
+    teacherLocation?: { latitude: number; longitude: number }
+  }) => {
+    store.attendanceMode = data.mode || 'normal'
+    store.attendanceConfig = {
+      requirePhoto: data.requirePhoto === true,
+      requireLocation: data.requireLocation === true,
+      radius: data.radius || 50,
+      teacherLocation: data.teacherLocation,
+    }
     store.showAttendance = true
     store.attendanceSigned = false
   },
@@ -508,6 +558,19 @@ const handlers = {
     aiInteractive.value = data
     showToast(`教师下发了 AI 沙盘：${data.title}`, 'info')
   },
+  onAiInteractiveHide: () => {
+    aiInteractive.value = null
+  },
+  onAiPracticeEnd: () => {
+    aiInteractive.value = null
+    if (store.viewState === 'ai_practice') {
+      store.endAiPractice?.()
+      store.viewState = store.previousViewState === 'ai_practice'
+        ? 'listening'
+        : (store.previousViewState || 'listening')
+    }
+    showToast('教师已结束 AI 实践', 'info')
+  },
   onBroadcastMsg: (data: { message: string; from?: string }) => {
     const prefix = data.from ? `${data.from}：` : ''
     store.showBroadcastMsg(prefix + data.message, data.from)
@@ -531,6 +594,9 @@ const handlers = {
   },
   onMemberUpdate: (_data: any) => {
     /* no-op */
+  },
+  onLessonStart: (data: any) => {
+    applyLessonStart(data)
   },
   onLessonEnd: () => {
     store.endQuiz()
@@ -566,6 +632,7 @@ onMounted(() => {
   s.on('connect', handlers.onConnect)
   s.on('disconnect', handlers.onDisconnect)
   s.on('room:joined', handlers.onRoomJoined)
+  s.on('room:join:error', handlers.onJoinError)
   s.on('slide:goto', handlers.onSlideGoto)
   s.on('quiz:start', handlers.onQuizStart)
   s.on('quiz:stop', handlers.onQuizStop)
@@ -579,11 +646,14 @@ onMounted(() => {
   s.on('attendance:start', handlers.onAttendanceStart)
   s.on('attendance:end', handlers.onAttendanceEnd)
   s.on('ai:practice:start', handlers.onAiPracticeStart)
+  s.on('ai:practice:end', handlers.onAiPracticeEnd)
   s.on('ai:interactive:show', handlers.onAiInteractiveShow)
+  s.on('ai:interactive:hide', handlers.onAiInteractiveHide)
   s.on('broadcast:msg', handlers.onBroadcastMsg)
   s.on('roll:call', handlers.onRollCall)
   s.on('slides:loaded', handlers.onSlidesLoaded)
   s.on('member:update', handlers.onMemberUpdate)
+  s.on('lesson:start', handlers.onLessonStart)
   s.on('lesson:end', handlers.onLessonEnd)
   s.on('compete:start', handlers.onCompeteStart)
   s.on('compete:stop', handlers.onCompeteStop)
@@ -597,6 +667,7 @@ onUnmounted(() => {
     s.off('connect', handlers.onConnect)
     s.off('disconnect', handlers.onDisconnect)
     s.off('room:joined', handlers.onRoomJoined)
+    s.off('room:join:error', handlers.onJoinError)
     s.off('slide:goto', handlers.onSlideGoto)
     s.off('quiz:start', handlers.onQuizStart)
     s.off('quiz:stop', handlers.onQuizStop)
@@ -610,11 +681,14 @@ onUnmounted(() => {
     s.off('attendance:start', handlers.onAttendanceStart)
     s.off('attendance:end', handlers.onAttendanceEnd)
     s.off('ai:practice:start', handlers.onAiPracticeStart)
+    s.off('ai:practice:end', handlers.onAiPracticeEnd)
     s.off('ai:interactive:show', handlers.onAiInteractiveShow)
+    s.off('ai:interactive:hide', handlers.onAiInteractiveHide)
     s.off('broadcast:msg', handlers.onBroadcastMsg)
     s.off('roll:call', handlers.onRollCall)
     s.off('slides:loaded', handlers.onSlidesLoaded)
     s.off('member:update', handlers.onMemberUpdate)
+    s.off('lesson:start', handlers.onLessonStart)
     s.off('lesson:end', handlers.onLessonEnd)
     s.off('compete:start', handlers.onCompeteStart)
     s.off('compete:stop', handlers.onCompeteStop)
@@ -791,8 +865,18 @@ function toggleHandRaise() {
   }
 }
 
-function handleSignIn() {
-  socket.value?.emit('attendance:sign')
+function handleSignIn(payload?: {
+  photo?: string
+  location?: { latitude: number; longitude: number; accuracy?: number }
+  distance?: number
+  verified?: boolean
+}) {
+  socket.value?.emit('attendance:sign', {
+    photo: payload?.photo,
+    location: payload?.location,
+    distance: payload?.distance,
+    verified: payload?.verified !== false,
+  })
   store.attendanceSigned = true
   store.showAttendance = false
   showToast('签到成功')
@@ -1742,23 +1826,7 @@ function sendMessage() {
   to { transform: rotate(10deg); }
 }
 
-.toast-notification {
-  position: fixed;
-  top: 80px; left: 50%; transform: translateX(-50%);
-  z-index: 999;
-  display: flex; align-items: center; gap: 8px;
-  padding: 12px 20px; border-radius: 12px;
-  font-size: 14px; font-weight: 500;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-
-  &.success { background: #f6ffed; color: #52c41a; border: 1px solid #b7eb8f; }
-  &.info { background: #e6f4ff; color: #1677ff; border: 1px solid #91caff; }
-}
-
-.toast-enter-active { transition: all 0.3s ease-out; }
-.toast-leave-active { transition: all 0.2s ease-in; }
-.toast-enter-from { opacity: 0; transform: translateX(-50%) translateY(-12px); }
-.toast-leave-to { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+/* Toast 已迁移到全局 <ToastContainer />（App.vue），不再保留页面级 .toast-notification 样式 */
 
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }

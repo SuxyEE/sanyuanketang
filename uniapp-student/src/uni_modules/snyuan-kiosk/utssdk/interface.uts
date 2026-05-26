@@ -1,0 +1,50 @@
+/**
+ * snyuan-kiosk · UTS 插件对外类型定义。
+ *
+ * 所有方法在非 Android 平台 / Device Owner 未配置 / 插件未编译时都 swallow 错误返回 false。
+ * 业务侧（@/kiosk/index.ts）会做 try/catch 兜底，UI 不会崩。
+ */
+
+export interface KioskDiagnoseInfo {
+  /** 当前包是否被设为 Device Owner（dpm set-device-owner 后才 true） */
+  isDeviceOwner: boolean
+  /** 当前是否处于 startLockTask 状态（API 23+） */
+  isInLockTask: boolean
+  /** 当前是否禁用了 Keyguard */
+  isKeyguardDisabled: boolean
+  /** Build.VERSION.SDK_INT */
+  sdkInt: number
+  /** Build.MODEL */
+  model: string
+  /** Build.MANUFACTURER */
+  manufacturer: string
+}
+
+/** 是否被设为 Device Owner（基础前置） */
+export type IsDeviceOwner = () => boolean
+
+/**
+ * 进入 lockTask（屏幕固定）模式。
+ * - 若为 Device Owner：自动把本包加入 lockTask 白名单，然后 startLockTask
+ * - 否则：依赖系统级 App Pinning（用户在 设置 中需先打开）
+ * 返回 true 表示已尝试调用，false 表示底层抛错。
+ */
+export type StartLockTask = () => boolean
+
+/** 退出 lockTask，让 HOME / RECENT / BACK 恢复 */
+export type StopLockTask = () => boolean
+
+/** 是否绕过锁屏（Device Owner 模式下生效） */
+export type SetKeyguardDisabled = (disabled: boolean) => boolean
+
+/** 隐藏 / 显示系统 UI（状态栏 + 导航栏 + 沉浸式 sticky 全合一） */
+export type SetSystemUiVisibility = (opts: UTSJSONObject) => boolean
+
+/** 屏幕常亮（FLAG_KEEP_SCREEN_ON） */
+export type SetScreenAlwaysOn = (on: boolean) => boolean
+
+/** 禁用 / 启用通知栏下拉（仅 Device Owner 模式生效，HyperOS 14 需要） */
+export type SetStatusBarDisabled = (disabled: boolean) => boolean
+
+/** 诊断当前 kiosk 配置（教师后台可调，确认设备是否真锁住） */
+export type Diagnose = () => KioskDiagnoseInfo

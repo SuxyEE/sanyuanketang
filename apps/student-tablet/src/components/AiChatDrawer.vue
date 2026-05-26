@@ -52,7 +52,10 @@
         <div v-if="streamingMessage" class="chat-msg assistant">
           <div class="msg-avatar"><span v-html="botIconSmall" aria-hidden="true"></span></div>
           <div class="msg-bubble">
-            <div class="msg-text streaming">{{ streamingMessage.content }}<span class="cursor-blink" aria-hidden="true">▋</span></div>
+            <div class="msg-text md-body streaming">
+              <div v-html="renderMarkdown(streamingMessage.content)"></div>
+              <span class="cursor-blink" aria-hidden="true">▋</span>
+            </div>
           </div>
         </div>
 
