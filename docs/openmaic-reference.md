@@ -121,9 +121,9 @@
 
 ```
 ┌─────────────────┐   ┌─────────────────┐   ┌─────────────────┐
-│ teacher-tablet  │   │ student-tablet  │   │ teacher-screen  │
-│   Vue 3 + Vite  │   │   Vue 3 + Vite  │   │   Vue 3 + Vite  │
-│   :3002         │   │   :3003         │   │   :3001         │
+│ uniapp-teacher  │   │ uniapp-student  │   │ teacher-screen  │
+│ UniApp+Vue3+TS  │   │ UniApp+Vue3+TS  │   │   Vue 3 + Vite  │
+│ App / H5 5174   │   │ App / H5 5173   │   │   :3001         │
 └────────┬────────┘   └────────┬────────┘   └────────┬────────┘
          │                     │                     │
          │   Socket.IO /classroom namespace          │

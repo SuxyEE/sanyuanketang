@@ -569,7 +569,7 @@
                   class="preview-meta-chip warn"
                 >已清洗 {{ aiPracticePreview.sanitizeStats.removed || 0 }} 项不安全内容</text>
               </view>
-              <text class="preview-hint">提示：在学生平板上点击「打开」即可看到完整交互。如要本地预览 HTML，请用 Web 版教师端（apps/teacher-tablet）。</text>
+              <text class="preview-hint">提示：在学生平板上点击「打开」即可看到完整交互。如需本地查看 HTML 源码，可在 H5 调试模式下打开浏览器开发者工具。</text>
               <view class="preview-actions">
                 <Button block icon-left="send" @tap="pushAiPracticeToStudents">下发到学生端</Button>
                 <Button variant="secondary" block icon-left="x" @tap="discardAiPracticePreview">放弃预览</Button>

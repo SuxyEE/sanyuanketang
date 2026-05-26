@@ -5,10 +5,8 @@
   "description": "交互课堂系统 - 集美工业职业学院多专业通用智慧课堂平台",
   "scripts": {
     "dev:screen": "pnpm --filter @snyuan/teacher-screen dev",
-    "dev:teacher": "pnpm --filter @snyuan/teacher-tablet dev",
-    "dev:student": "pnpm --filter @snyuan/student-tablet dev",
-    "dev:uniapp:student": "pnpm --filter @snyuan/uniapp-student dev:h5",
-    "dev:uniapp:teacher": "pnpm --filter @snyuan/uniapp-teacher dev:h5",
+    "dev:teacher": "pnpm --filter @snyuan/uniapp-teacher dev:h5",
+    "dev:student": "pnpm --filter @snyuan/uniapp-student dev:h5",
     "dev:admin": "pnpm --filter @snyuan/admin dev",
     "dev:server": "pnpm --filter @snyuan/server dev",
     "dev:all": "pnpm -r --parallel dev",

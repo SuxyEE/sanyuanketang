@@ -133,7 +133,7 @@ Windows 查 IP：`ipconfig` 看 IPv4。
 ### 5.3 跨端测试链路
 
 1. `pnpm --filter @snyuan/server dev`（终端 1）
-2. `pnpm --filter @snyuan/teacher-tablet dev`（终端 2，浏览器开 http://localhost:3002 模拟教师）
+2. `pnpm --filter @snyuan/uniapp-teacher dev:h5`（终端 2，浏览器开 H5 端口模拟教师）
 3. HBuilderX 跑 uniapp-student 到红米平板
 4. 教师端选课 → 生成 6 位入口码 → 学生平板输入码加入
 
@@ -152,7 +152,7 @@ Windows 查 IP：`ipconfig` 看 IPv4。
 |---|---|---|
 | P0 | 真机连后端跑通 join → quiz → submit | ⏳ 待你验证 |
 | P0 | snyuan-kiosk UTS 插件 native 编译 + Device Owner 配置 | ⏳ 见 KIOSK-SETUP.md |
-| P1 | 把 web 版 student-tablet 的 markdown 渲染（marked + DOMPurify）替换为 `mp-html` | ⏳ |
+| P1 | AI 答疑 Markdown 渲染从字符串替换升级到 `mp-html` 组件 | ⏳ |
 | P1 | 加 vue-tsc 类型检查到 build 流程 | ⏳ |
 | P2 | 实现 App 端 TTS（plus.speech 或第三方 SDK） | ⏳ |
 | P2 | UI 适配横屏 1280×800（红米 Pad SE 默认分辨率） | ⏳ |

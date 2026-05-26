@@ -7,31 +7,32 @@
 | 路径 | 形态 | 端口 | 说明 |
 |---|---|---|---|
 | `apps/server` | NestJS 10 + Socket.IO + AI Service | 3000 | 唯一后端 |
-| `apps/teacher-tablet` | Vue 3 + Vite | 3002 | 教师手持平板（控场） |
 | `apps/teacher-screen` | Vue 3 + Vite | 3001 | 教室大屏 |
-| `apps/student-tablet` | Vue 3 + Vite | 3003 | 学生 Web 平板 |
 | `apps/admin` | Vue 3 + Element Plus | 3004 | 校级管理后台 |
 | `packages/shared` | 共享 TS 类型 + WS 事件 + 图标 | - | 给 apps/ 引用 |
-| `uniapp-student` | UniApp Vue 3 + TypeScript | - | **学生端原生 App**（Android Kiosk 强控制） |
+| `uniapp-student` | UniApp Vue 3 + TypeScript | H5 5173 | **学生端原生 App**（Android Kiosk 强控制，H5 可调试） |
+| `uniapp-teacher` | UniApp Vue 3 + TypeScript | H5 5174 | **教师端原生 App**（手持平板控场，H5 可调试） |
 | `docs/` | 文档 | - | OpenMAIC 参考档案等 |
+
+> 旧版 Vue3 + Vite 的 `apps/teacher-tablet`、`apps/student-tablet` 已于 2026-05 全面迁移到 uniapp 端并下线，所有控场/学生侧功能现以原生 App + H5 调试为唯一入口。
 
 ## 快速开始
 
 ```bash
-pnpm install                 # 装根 + 所有 apps 子包（uniapp-student 独立）
-pnpm dev:all                 # 五端 Web 并行起
+pnpm install                 # 装根 + 所有子包
+pnpm dev:all                 # 全端并行起
 # 或单独起
 pnpm dev:server              # 后端 :3000 (Swagger: /api/docs)
-pnpm dev:teacher             # 教师平板 :3002
-pnpm dev:student             # 学生 Web 平板 :3003
+pnpm dev:teacher             # 教师端 H5 调试（uniapp-teacher）
+pnpm dev:student             # 学生端 H5 调试（uniapp-student）
 pnpm dev:screen              # 大屏 :3001
 pnpm dev:admin               # 管理后台 :3004
 ```
 
-UniApp 学生端独立，使用 HBuilderX 或 CLI：
+UniApp 真机 / 打 Android 包：
 
 ```bash
-cd uniapp-student
+cd uniapp-student            # 或 uniapp-teacher
 pnpm install
 pnpm dev:h5                  # 本地 H5 调试
 # 真机 / 原生 App 见 uniapp-student/docs/DEV.md
@@ -54,12 +55,14 @@ ACCESS_CODE=可选的站点访问码
 
 完整 env 列表见 `apps/server/src/database/database.module.ts` 与 `apps/server/src/modules/auth/auth.module.ts`。
 
-## 学生端两种部署形态
+## 学生端部署形态
 
-| 场景 | 推荐 |
+学生端统一以 `uniapp-student` 为准，支持两种运行模式：
+
+| 场景 | 跑法 |
 |---|---|
-| 学生用浏览器 / iPad 网页 / PC | `apps/student-tablet`（Web） |
-| **学生用安卓平板 + Kiosk 强控制（不能切走 / 不能卸载）** | `uniapp-student`（UniApp 原生 App） |
+| 本地 / 浏览器临时调试（无需打包） | `pnpm dev:student` → 访问 H5 端口 |
+| **生产部署：安卓平板 + Kiosk 强控制（不能切走 / 不能卸载）** | HBuilderX 打 Android 包，配 Device Owner |
 
 强控制配置见 [`uniapp-student/docs/KIOSK-SETUP.md`](./uniapp-student/docs/KIOSK-SETUP.md)。
 
@@ -72,12 +75,11 @@ ACCESS_CODE=可选的站点访问码
 ## 技术栈一览
 
 - **后端**：NestJS 10 + Socket.IO 4 + TypeORM 0.3 + MySQL + Vercel AI SDK（10 provider 50+ model）
-- **Web 前端**：Vue 3.5 + Vite 6 + Pinia + SCSS + socket.io-client
+- **Web 前端**：Vue 3.5 + Vite 6 + Pinia + SCSS + socket.io-client（仅 `teacher-screen` / `admin` 使用）
 - **管理后台**：+ Element Plus + ECharts
 - **大屏**：+ KaTeX（渲染 AI 板书公式）
-- **学生 Web**：+ marked + DOMPurify（AI 答疑 Markdown）
-- **教师平板**：+ pdfjs-dist（PDF 解析为图片）+ pptxgenjs
-- **学生 App**：UniApp 3 + Vue 3 + TypeScript + UTS 原生插件（Android Device Owner）
+- **学生 App**：UniApp 3 + Vue 3 + TypeScript + UTS 原生插件（Android Device Owner，Kiosk 强控制）
+- **教师 App**：UniApp 3 + Vue 3 + TypeScript（手持平板控场，含 AI 课件生成、签到、分组、作业、AI 练习等全功能）
 
 ## 项目命名约定
 
