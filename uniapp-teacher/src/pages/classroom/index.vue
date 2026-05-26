@@ -2780,15 +2780,42 @@ function endQuiz() {
   toast('已结束测验')
 }
 
-function startAttendance() {
+function requestLocationPermission(): Promise<boolean> {
+  return new Promise((resolve) => {
+    // #ifdef APP-PLUS
+    if (typeof plus !== 'undefined' && (plus as any).android) {
+      ;(plus as any).android.requestPermissions(
+        ['android.permission.ACCESS_FINE_LOCATION', 'android.permission.ACCESS_COARSE_LOCATION'],
+        (result: any) => resolve(result.granted && result.granted.length > 0),
+        () => resolve(false),
+      )
+    } else {
+      resolve(true)
+    }
+    // #endif
+    // #ifndef APP-PLUS
+    resolve(true)
+    // #endif
+  })
+}
+
+async function startAttendance() {
   if (startingAttendance.value) return
   if (store.activeAttendance) {
     toast('签到已在进行中，请先结束')
     return
   }
   startingAttendance.value = true
+
+  const granted = await requestLocationPermission()
+  if (!granted) {
+    toast('需要定位权限才能发起签到，请在系统设置中开启')
+    startingAttendance.value = false
+    return
+  }
+
   uni.getLocation({
-    type: 'gcj02',
+    type: 'wgs84',
     isHighAccuracy: true,
     success: (res) => {
       store.attendanceSigned = []
@@ -2805,7 +2832,6 @@ function startAttendance() {
         },
       }
       emit(RoomEvent.AttendanceStart, payload)
-      // 乐观更新：等不到服务端 echo 时按钮也会立刻切到"结束"状态
       store.activeAttendance = {
         mode: payload.mode,
         duration: payload.duration,
