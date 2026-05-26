@@ -19,6 +19,30 @@
       <text class="sub fade-up" style="animation-delay: 240ms">辛苦了！课后作业可以在下方查看</text>
     </view>
 
+    <!-- AI 错题本入口（始终可见，引导课后巩固） -->
+    <Card
+      :elevation="2"
+      padding="md"
+      class="wrong-book-entry fade-up"
+      :style="{ animationDelay: '160ms' }"
+      interactive
+      @tap="openWrongBook"
+    >
+      <view class="wbe-row">
+        <view class="wbe-icon-wrap">
+          <Icon name="brain" size="lg" tone="inverse" />
+          <view class="wbe-icon-glow"></view>
+        </view>
+        <view class="wbe-text">
+          <text class="wbe-title">我的错题本 · AI 讲解</text>
+          <text class="wbe-desc">本节课答错的题已自动归集，点开有 AI 一对一讲解</text>
+        </view>
+        <view class="wbe-arrow">
+          <Icon name="chevron-right" size="md" tone="inverse" />
+        </view>
+      </view>
+    </Card>
+
     <view v-if="store.homeworkList.length === 0" class="empty-state">
       <view class="empty-icon-wrap"><Icon name="check-circle" size="2xl" tone="success" /></view>
       <text class="empty-title">没有待完成的作业</text>
@@ -97,6 +121,10 @@ function formatDeadline(s: string): string {
 
 function goBack() {
   uni.reLaunch({ url: '/pages/join/index' })
+}
+
+function openWrongBook() {
+  uni.navigateTo({ url: '/pages/wrong-book/index' })
 }
 </script>
 
@@ -231,6 +259,69 @@ function goBack() {
 .sub {
   font-size: var(--font-body);
   color: var(--color-text-secondary);
+}
+
+/* ===== 错题本入口卡 ===== */
+.wrong-book-entry {
+  background: linear-gradient(135deg, #722ed1 0%, #5b1eb0 60%, #2f6bff 100%);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  position: relative;
+}
+.wrong-book-entry :deep(.card-hover) { opacity: 0.92; }
+.wbe-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  position: relative;
+  z-index: 1;
+}
+.wbe-icon-wrap {
+  position: relative;
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.20);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.wbe-icon-glow {
+  position: absolute;
+  inset: -16rpx;
+  border-radius: var(--radius-full);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.35), transparent 70%);
+  filter: blur(20rpx);
+  z-index: -1;
+  animation: icon-glow-pulse 3s var(--ease-standard) infinite;
+}
+.wbe-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+  min-width: 0;
+}
+.wbe-title {
+  font-size: var(--font-title-sm);
+  font-weight: var(--font-weight-bold);
+  color: #fff;
+}
+.wbe-desc {
+  font-size: var(--font-caption);
+  color: rgba(255, 255, 255, 0.85);
+  line-height: var(--line-height-snug);
+}
+.wbe-arrow {
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .empty-state {

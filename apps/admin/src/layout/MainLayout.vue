@@ -34,6 +34,14 @@
           <el-icon><DataBoard /></el-icon>
           <span>仪表盘</span>
         </el-menu-item>
+        <el-menu-item index="/ai">
+          <el-icon><MagicStick /></el-icon>
+          <span>AI 治理</span>
+        </el-menu-item>
+        <el-menu-item index="/classes">
+          <el-icon><School /></el-icon>
+          <span>班级学情</span>
+        </el-menu-item>
         <el-menu-item index="/courses">
           <el-icon><Reading /></el-icon>
           <span>课程管理</span>

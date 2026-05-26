@@ -35,6 +35,16 @@
           "titleNView": false
         }
       }
+    },
+    {
+      "path": "pages/wrong-book/index",
+      "style": {
+        "navigationBarTitleText": "我的错题本",
+        "navigationStyle": "custom",
+        "app-plus": {
+          "titleNView": false
+        }
+      }
     }
   ],
   "globalStyle": {
