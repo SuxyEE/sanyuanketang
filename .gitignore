@@ -8,10 +8,6 @@ build/
 out/
 
 # 环境变量
-.env
-.env.local
-.env.*.local
-deploy/.env
 
 # 日志
 *.log
