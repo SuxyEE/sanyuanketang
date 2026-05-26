@@ -1,0 +1,83 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# 宿主 nginx（BT-Panel 管的那个）反代到三元课堂 web 容器
+#
+# 把这一段贴进 BT-Panel 的「网站 → 添加站点 → 配置文件」 / 或手动放到
+#   /www/server/nginx/conf/vhost/snyuan.conf
+#
+# 然后 nginx -t && nginx -s reload
+#
+# 三元课堂自己的 docker compose 已经在 127.0.0.1:3100 暴露了 web 容器
+# 这里只是把域名 / HTTPS 接上去，不动其他项目的任何配置
+# ─────────────────────────────────────────────────────────────────────────────
+
+# 这一段放在 http {} 里（默认就是）；BT-Panel 一般已经有 http 块，不需要重复
+map $http_upgrade $snyuan_connection_upgrade {
+  default upgrade;
+  ''      close;
+}
+
+# ── HTTP → HTTPS 强跳 ──
+server {
+  listen      80;
+  listen      [::]:80;
+  server_name snyuan.example.com;   # ★ 改成你的真实域名
+
+  # 用于 Let's Encrypt http-01 续签时放行（BT-Panel 申请证书时自动写）
+  location /.well-known/acme-challenge/ {
+    root /usr/share/nginx/html;
+  }
+
+  return 301 https://$host$request_uri;
+}
+
+# ── HTTPS 主站 ──
+server {
+  listen      443 ssl;
+  listen      [::]:443 ssl;
+  http2       on;
+  server_name snyuan.example.com;   # ★ 同上
+
+  # ★ 证书路径用 BT-Panel 申请完后生成的实际路径
+  ssl_certificate     /www/server/panel/vhost/cert/snyuan.example.com/fullchain.pem;
+  ssl_certificate_key /www/server/panel/vhost/cert/snyuan.example.com/privkey.pem;
+
+  ssl_session_timeout       10m;
+  ssl_session_cache         shared:SSL:50m;
+  ssl_protocols             TLSv1.2 TLSv1.3;
+  ssl_ciphers               'ECDHE+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH:!aNULL:!MD5';
+  ssl_prefer_server_ciphers on;
+
+  # 安全头（可按需收紧 CSP）
+  add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+  add_header X-Frame-Options             "SAMEORIGIN" always;
+  add_header X-Content-Type-Options      "nosniff" always;
+  add_header Referrer-Policy             "strict-origin-when-cross-origin" always;
+
+  # 教师扫码上传课件最大 30MB（容器内 nginx 也限了 30M，对齐一下）
+  client_max_body_size 30M;
+  proxy_buffering      off;       # SSE / 流式 AI 输出
+  proxy_read_timeout   3600s;
+  proxy_send_timeout   3600s;
+
+  # 全站全代理给容器内 nginx（127.0.0.1:3100）
+  # 容器内 nginx 会自己识别 /, /screen/, /admin/, /api/, /socket.io/
+  location / {
+    proxy_pass         http://127.0.0.1:3100;
+    proxy_http_version 1.1;
+    proxy_set_header   Host              $host;
+    proxy_set_header   X-Real-IP         $remote_addr;
+    proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header   X-Forwarded-Host  $host;
+    proxy_set_header   X-Forwarded-Proto $scheme;
+
+    # WebSocket 升级（容器内 nginx 已会再处理一次，但要先把 header 透传进去）
+    proxy_set_header   Upgrade           $http_upgrade;
+    proxy_set_header   Connection        $snyuan_connection_upgrade;
+  }
+
+  # 健康检查（外网可访问，方便客户演示前确认存活）
+  location = /healthz {
+    proxy_pass http://127.0.0.1:3100/healthz;
+    access_log off;
+  }
+}

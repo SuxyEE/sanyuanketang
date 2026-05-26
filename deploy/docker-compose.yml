@@ -1,0 +1,117 @@
+name: snyuan
+
+# 一条 `docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d` 起整套
+# - mysql ：8.4，仅本地 127.0.0.1 暴露
+# - server：NestJS API + WS
+# - web   ：nginx 托管 SPA + 反代 /api /socket.io 到 server
+#
+# 在仓库根目录执行（context 默认是 .），不要 cd 进 deploy/ 里跑
+
+services:
+
+  # ────────────────────────────────────────────────────────────────────────
+  mysql:
+    image: mysql:8.0
+    container_name: snyuan-mysql
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE:      ${MYSQL_DATABASE}
+      MYSQL_USER:          ${MYSQL_USER}
+      MYSQL_PASSWORD:      ${MYSQL_PASSWORD}
+    ports:
+      # 只绑到回环口；外网/同机其他容器需从 docker 内部网络走（mysql:3306）
+      - "127.0.0.1:${MYSQL_PORT:-3307}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - snyuan-net
+
+  # ────────────────────────────────────────────────────────────────────────
+  server:
+    image: snyuan-server:latest
+    container_name: snyuan-server
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: server
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: ${PORT:-3000}
+      JWT_SECRET: ${JWT_SECRET}
+      WS_AUTH_MODE: ${WS_AUTH_MODE:-off}
+      ACCESS_CODE: ${ACCESS_CODE:-}
+      ACCESS_CODE_TTL_DAYS: ${ACCESS_CODE_TTL_DAYS:-7}
+      DATABASE_URL: ${DATABASE_URL}
+      DB_SYNCHRONIZE: ${DB_SYNCHRONIZE:-true}
+      DB_LOGGING: ${DB_LOGGING:-false}
+      AI_PROVIDER: ${AI_PROVIDER:-qwen}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_BASE_URL: ${AI_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      AI_MODEL: ${AI_MODEL:-qwen3.5-plus}
+      AI_VISION_MODEL: ${AI_VISION_MODEL:-qwen3-vl-plus-latest}
+      AI_CODER_MODEL: ${AI_CODER_MODEL:-qwen3-coder-plus}
+      AI_REASONING_MODEL: ${AI_REASONING_MODEL:-qwen3.7-max}
+    ports:
+      # API 直连备用：宿主 127.0.0.1:3101 → 容器 :3000
+      # （正常流量走 web 容器 → server，这个口子只用于排查）
+      - "127.0.0.1:${API_PORT:-3101}:3000"
+    healthcheck:
+      # Swagger 文档接口稳定且无副作用；启动后 60s 内应可访问
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/docs"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks:
+      - snyuan-net
+
+  # ────────────────────────────────────────────────────────────────────────
+  web:
+    image: snyuan-web:latest
+    container_name: snyuan-web
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: web
+      args:
+        VITE_API_BASE: ${VITE_API_BASE:-/api/v1}
+        VITE_WS_URL:   ${VITE_WS_URL:-}
+    restart: unless-stopped
+    depends_on:
+      - server
+    ports:
+      # 对外只暴露这一个端口；宿主 BT-Panel nginx 反代到这
+      - "127.0.0.1:${WEB_PORT:-3100}:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - snyuan-net
+
+# 命名 volume，重启不丢 DB 数据；想清掉数据：docker volume rm snyuan_mysql-data
+volumes:
+  mysql-data:
+    name: snyuan-mysql-data
+
+networks:
+  snyuan-net:
+    name: snyuan-net
+    driver: bridge
