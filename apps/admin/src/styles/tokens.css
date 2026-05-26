@@ -1,0 +1,153 @@
+/**
+ * Admin Design Tokens
+ *
+ * 单一来源：所有颜色 / 阴影 / 圆角 / 字体 / 间距均从这里取，
+ * 各页面 .vue 的 <style scoped> 只引用 token 变量，不要写死 hex / px。
+ *
+ * 命名约定：
+ *   - --color-{role}-{intensity}: 角色 + 强度
+ *   - --shadow-{xs|sm|md|lg|xl}: 阴影层级（elevation 一致性，避免随机阴影值）
+ *   - --radius-{sm|md|lg|xl}: 圆角等级
+ *   - --space-{xs..3xl}: 4px 基线间距
+ */
+
+:root {
+  /* ----- 品牌色（语义） ----- */
+  --color-brand-50:  #eff4ff;
+  --color-brand-100: #dbe6ff;
+  --color-brand-200: #b8cfff;
+  --color-brand-500: #2f54eb;   /* 主操作 / 链接 / 主图表 */
+  --color-brand-600: #1d3fc4;
+  --color-brand-700: #142d8c;
+
+  /* AI 紫（专门承接所有 AI 类指标 / 标签 / 图表） */
+  --color-ai-50:  #f5f0ff;
+  --color-ai-100: #e9dcff;
+  --color-ai-500: #722ed1;
+  --color-ai-600: #5b1eb0;
+
+  /* 成功 / 在线 / 完成 */
+  --color-success-50:  #ecfdf5;
+  --color-success-100: #d1fae5;
+  --color-success-500: #16a34a;
+  --color-success-600: #15803d;
+
+  /* 警示 / 测验 / 待处理 */
+  --color-warning-50:  #fffbeb;
+  --color-warning-100: #fef3c7;
+  --color-warning-500: #f59e0b;
+  --color-warning-600: #d97706;
+
+  /* 危险 / 异常 / 离线 */
+  --color-danger-50:  #fef2f2;
+  --color-danger-100: #fee2e2;
+  --color-danger-500: #ef4444;
+  --color-danger-600: #dc2626;
+
+  /* 信息 / 实时事件 / 知识点 */
+  --color-info-50:  #ecfeff;
+  --color-info-100: #cffafe;
+  --color-info-500: #06b6d4;
+  --color-info-600: #0891b2;
+
+  /* 中性 */
+  --color-text-primary:   #0f172a;
+  --color-text-secondary: #475569;
+  --color-text-tertiary:  #94a3b8;
+  --color-text-inverse:   #ffffff;
+
+  --color-bg-page:        #f6f8fb;
+  --color-bg-surface:     #ffffff;
+  --color-bg-soft:        #f8fafc;
+  --color-bg-elevated:    #ffffff;
+
+  --color-border-subtle:  #eef1f6;
+  --color-border-default: #e2e8f0;
+  --color-border-strong:  #cbd5e1;
+
+  /* 侧边栏（深色） */
+  --color-sider-bg:       #0e1b3a;
+  --color-sider-bg-end:   #142554;
+  --color-sider-text:     rgba(255, 255, 255, 0.72);
+  --color-sider-text-mute:rgba(255, 255, 255, 0.45);
+  --color-sider-active-bg:rgba(47, 84, 235, 0.18);
+
+  /* ----- 阴影系统（5 级 elevation） ----- */
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.06), 0 2px 4px rgba(15, 23, 42, 0.03);
+  --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.08), 0 4px 8px rgba(15, 23, 42, 0.04);
+  --shadow-xl: 0 24px 48px rgba(15, 23, 42, 0.12), 0 8px 16px rgba(15, 23, 42, 0.06);
+  --shadow-focus: 0 0 0 3px rgba(47, 84, 235, 0.18);
+
+  /* ----- 圆角 ----- */
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 24px;
+  --radius-full: 9999px;
+
+  /* ----- 间距（4px 基线） ----- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 48px;
+
+  /* ----- 字体 ----- */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei',
+               'Segoe UI', 'Inter', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', 'Cascadia Mono', Consolas,
+               'Liberation Mono', monospace;
+
+  --font-size-xs:   12px;
+  --font-size-sm:   13px;
+  --font-size-base: 14px;
+  --font-size-md:   16px;
+  --font-size-lg:   18px;
+  --font-size-xl:   20px;
+  --font-size-2xl:  24px;
+  --font-size-3xl:  32px;
+  --font-size-4xl:  40px;
+
+  --font-weight-regular: 400;
+  --font-weight-medium:  500;
+  --font-weight-semi:    600;
+  --font-weight-bold:    700;
+
+  --line-height-tight:  1.2;
+  --line-height-snug:   1.35;
+  --line-height-base:   1.55;
+  --line-height-loose:  1.75;
+
+  /* ----- 动画 token ----- */
+  --duration-fast:   150ms;
+  --duration-base:   220ms;
+  --duration-slow:   320ms;
+  --ease-out:        cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in:         cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out:     cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ----- 层级 ----- */
+  --z-base:       0;
+  --z-elevated:   10;
+  --z-sticky:     20;
+  --z-overlay:    40;
+  --z-modal:      100;
+  --z-toast:      1000;
+}
+
+/* 系统级偏好：减少动效 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
