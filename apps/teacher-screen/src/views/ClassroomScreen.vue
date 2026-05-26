@@ -269,6 +269,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useClassroomStore } from '../stores/classroom'
 import { useSocket } from '../composables/useSocket'
+import { WS_URL } from '../shared/backend'
 import AiWhiteboard from '../components/AiWhiteboard.vue'
 
 interface AiWhiteboardPayload {
@@ -463,7 +464,7 @@ const currentRoomLabel = computed(() => currentLessonId.value)
 const showPicker = ref(true)
 const manualRoomCode = ref('')
 const isTeacherControlled = ref(false)
-const serverBase = import.meta.env.VITE_WS_URL || 'http://localhost:3000'
+const serverBase = WS_URL
 const teacherQrUrl = computed(() => `${serverBase}/api/v1/qr/classroom?room=${currentLessonId.value}&action=teacher`)
 const studentQrUrl = computed(() => `${serverBase}/api/v1/qr/classroom?room=${currentLessonId.value}&action=student`)
 const currentTime = ref('')

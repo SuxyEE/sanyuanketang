@@ -1,7 +1,6 @@
 import { ref, onUnmounted } from 'vue'
 import { io, Socket } from 'socket.io-client'
-
-const WS_URL = (import.meta as any).env?.VITE_WS_URL || 'http://localhost:3000'
+import { WS_URL } from '@/shared/backend'
 
 let socket: Socket | null = null
 let refCount = 0

@@ -1,7 +1,6 @@
 import { ref, onUnmounted } from 'vue'
 import { io, Socket } from 'socket.io-client'
-
-const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:3000'
+import { WS_URL } from '@/shared/backend'
 
 const sharedSocket = ref<Socket | null>(null)
 const sharedConnected = ref(false)

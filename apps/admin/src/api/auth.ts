@@ -8,9 +8,7 @@
  * 演示模式下 token 形如 `demo-<base64(JSON)>`，仅前端识别，**不要**当作安全凭证。
  */
 
-const DEFAULT_API_BASE = 'http://localhost:3000/api/v1'
-
-const API_BASE = ((import.meta as any).env?.VITE_API_BASE as string | undefined)?.trim() || DEFAULT_API_BASE
+import { API_BASE } from '@/shared/backend'
 
 export interface LoginResult {
   ok: boolean
