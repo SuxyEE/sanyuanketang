@@ -12,7 +12,7 @@ import { ConfigService } from '@nestjs/config'
 import { JwtService } from '@nestjs/jwt'
 import { Server, Socket } from 'socket.io'
 import { RoomEvent } from '@snyuan/shared'
-import { AiService } from '../ai/ai.service'
+import { AiService, type WhiteboardGenResult, type InteractiveGenResult } from '../ai/ai.service'
 import { AccessCodeService } from '../access-code/access-code.service'
 
 interface RoomMember {
@@ -2103,17 +2103,41 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
   ) {
     this.logger.log(`AI whiteboard gen [${data.model || 'default'}]: ${data.topic}`)
     try {
-      const result = await this.aiService.generateWhiteboard(data)
+      let lastEmittedChars = 0
+      let finalResult: WhiteboardGenResult | null = null
+      // 边收 LLM 增量边给请求方推进度，避免 30s+ 看起来像挂了
+      // 节流：每累计 200 字符或 350ms 推一次，避免事件风暴
+      let lastEmitAt = Date.now()
+      for await (const ev of this.aiService.generateWhiteboardStream(data)) {
+        if (ev.type === 'delta') {
+          const now = Date.now()
+          if (ev.totalChars - lastEmittedChars >= 200 || now - lastEmitAt >= 350) {
+            client.emit('ai:whiteboard:gen:progress', {
+              totalChars: ev.totalChars,
+              done: false,
+            })
+            lastEmittedChars = ev.totalChars
+            lastEmitAt = now
+          }
+        } else if (ev.type === 'done') {
+          finalResult = ev.result
+        }
+      }
+      // 最终进度 + 完整 payload
+      client.emit('ai:whiteboard:gen:progress', {
+        totalChars: lastEmittedChars,
+        done: true,
+      })
       const payload = {
         topic: data.topic,
-        title: result.title,
-        subtitle: result.subtitle,
-        items: result.items,
-        error: result.error,
+        title: finalResult?.title,
+        subtitle: finalResult?.subtitle,
+        items: finalResult?.items || [],
+        error: finalResult?.error,
         generatedAt: new Date().toISOString(),
       }
       client.emit('ai:whiteboard:gen', payload)
-      if (data.broadcast) {
+      if (data.broadcast && finalResult && Array.isArray(finalResult.items) && finalResult.items.length > 0) {
         const roomId = this.socketToRoom.get(client.id)
         if (roomId) {
           this.emitToRoom(roomId, 'ai:whiteboard:show', payload)
@@ -2121,6 +2145,7 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       }
     } catch (err: any) {
       this.logger.error(`AI whiteboard gen error: ${err?.message || err}`)
+      client.emit('ai:whiteboard:gen:progress', { totalChars: 0, done: true })
       client.emit('ai:whiteboard:gen', { error: 'AI 板书生成失败：' + (err?.message || String(err)) })
     }
   }
@@ -2407,18 +2432,40 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
   ) {
     this.logger.log(`AI interactive gen [${data.model || 'default'}]: ${data.topic}`)
     try {
-      const result = await this.aiService.generateInteractive(data)
+      let lastEmittedChars = 0
+      let finalResult: InteractiveGenResult | null = null
+      // 同 whiteboard：节流推进度，让前端能持续显示「已生成 X 字符」
+      let lastEmitAt = Date.now()
+      for await (const ev of this.aiService.generateInteractiveStream(data)) {
+        if (ev.type === 'delta') {
+          const now = Date.now()
+          if (ev.totalChars - lastEmittedChars >= 200 || now - lastEmitAt >= 350) {
+            client.emit('ai:interactive:gen:progress', {
+              totalChars: ev.totalChars,
+              done: false,
+            })
+            lastEmittedChars = ev.totalChars
+            lastEmitAt = now
+          }
+        } else if (ev.type === 'done') {
+          finalResult = ev.result
+        }
+      }
+      client.emit('ai:interactive:gen:progress', {
+        totalChars: lastEmittedChars,
+        done: true,
+      })
       const payload = {
         topic: data.topic,
-        title: result.title,
-        description: result.description,
-        html: result.html,
-        sanitizeStats: result.sanitizeStats,
-        error: result.error,
+        title: finalResult?.title,
+        description: finalResult?.description,
+        html: finalResult?.html,
+        sanitizeStats: finalResult?.sanitizeStats,
+        error: finalResult?.error,
         generatedAt: new Date().toISOString(),
       }
       client.emit('ai:interactive:gen', payload)
-      if (data.broadcast) {
+      if (data.broadcast && finalResult?.html) {
         const roomId = this.socketToRoom.get(client.id)
         if (roomId) {
           this.emitToRoom(roomId, 'ai:interactive:show', payload)
@@ -2426,6 +2473,7 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       }
     } catch (err: any) {
       this.logger.error(`AI interactive gen error: ${err?.message || err}`)
+      client.emit('ai:interactive:gen:progress', { totalChars: 0, done: true })
       client.emit('ai:interactive:gen', { error: 'AI 生成失败：' + (err?.message || String(err)) })
     }
   }

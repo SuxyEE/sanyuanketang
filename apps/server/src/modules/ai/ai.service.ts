@@ -630,6 +630,68 @@ export class AiService {
     }
   }
 
+  /**
+   * generateInteractive 的流式版本：边调 LLM 边 yield 文本增量，让 caller 能实时把
+   * 进度（已收到多少字符）回传给前端，避免 30s+ 的"看起来卡住了"体验。
+   *
+   * yield 顺序：
+   *   - 0..N 个 { type: 'delta', text, totalChars } —— LLM 返回的原始增量（含 JSON 包裹）
+   *   - 最后 1 个     { type: 'done', result } —— 解析、清洗后的最终 InteractiveGenResult
+   *
+   * 错误或 mock 路径：直接 yield 单个 done 事件，没有 delta。
+   */
+  async *generateInteractiveStream(req: InteractiveGenRequest): AsyncGenerator<
+    | { type: 'delta'; text: string; totalChars: number }
+    | { type: 'done'; result: InteractiveGenResult }
+  > {
+    if (!this.shouldUseRealLlm(req)) {
+      yield { type: 'done', result: this.mockInteractive(req) }
+      return
+    }
+
+    const { system, user } = buildPrompt('interactive-gen', {
+      topic: req.topic,
+      courseContext: req.courseContext || '通识课程',
+      extraHint: req.extraHint || '',
+    })
+
+    let fullText = ''
+    try {
+      const effectiveModel = req.model || this.coderModel
+      for await (const chunk of this.llm.chatStream(
+        [
+          { role: 'system', content: system },
+          { role: 'user', content: user || '' },
+        ],
+        { model: effectiveModel, apiKey: req.apiKey, baseUrl: req.baseUrl },
+        { temperature: 0.6, maxTokens: AiService.MAX_OUTPUT_TOKENS, signal: AbortSignal.timeout(180_000) },
+      )) {
+        if (!chunk) continue
+        fullText += chunk
+        yield { type: 'delta', text: chunk, totalChars: fullText.length }
+      }
+      const parsed = safeParseJSON<{ title?: string; description?: string; html?: string }>(fullText)
+      if (!parsed?.html) {
+        this.logger.warn('Interactive gen stream: LLM returned no html field')
+        yield { type: 'done', result: this.mockInteractive(req, 'AI 未返回 html 字段，已使用占位场景') }
+        return
+      }
+      const { html, stats } = sanitizeInteractiveHtml(parsed.html)
+      yield {
+        type: 'done',
+        result: {
+          title: parsed.title || req.topic,
+          description: parsed.description || `关于「${req.topic}」的交互探索`,
+          html,
+          sanitizeStats: stats,
+        },
+      }
+    } catch (err: any) {
+      this.logger.error(`Interactive gen stream error: ${err?.message || err}`)
+      yield { type: 'done', result: this.mockInteractive(req, `AI 生成失败：${err?.message || err}`) }
+    }
+  }
+
   /** 占位 HTML：纯静态展示，让学生端不至于白屏 */
   private mockInteractive(req: InteractiveGenRequest, error?: string): InteractiveGenResult {
     const topic = req.topic || '本节知识点'
@@ -737,6 +799,85 @@ export class AiService {
     } catch (err: any) {
       this.logger.error(`Whiteboard gen error: ${err?.message || err}`)
       return this.mockWhiteboard(req, `AI 生成失败：${err?.message || err}`)
+    }
+  }
+
+  /**
+   * generateWhiteboard 的流式版本。语义同 generateInteractiveStream：
+   *   - 边收边 yield { type:'delta', text, totalChars }
+   *   - 末尾 yield { type:'done', result } 给最终 sanitize 完的 items[]
+   *
+   * 比 interactive 更适合做"边写边看"，因为 items 数组可以用 partial-json 增量解析；
+   * 不过为了和 interactive 保持接口一致，这里只 yield 字符增量，items 增量解析交给上层（gateway / 前端）做。
+   */
+  async *generateWhiteboardStream(req: WhiteboardGenRequest): AsyncGenerator<
+    | { type: 'delta'; text: string; totalChars: number }
+    | { type: 'done'; result: WhiteboardGenResult }
+  > {
+    if (!this.shouldUseRealLlm(req)) {
+      yield { type: 'done', result: this.mockWhiteboard(req) }
+      return
+    }
+
+    const { system, user } = buildPrompt('whiteboard-gen', {
+      topic: req.topic,
+      courseContext: req.courseContext || '通识课程',
+      extraHint: req.extraHint || '',
+    })
+
+    let fullText = ''
+    try {
+      const effectiveModel = req.model || this.reasoningModel
+      for await (const chunk of this.llm.chatStream(
+        [
+          { role: 'system', content: system },
+          { role: 'user', content: user || '' },
+        ],
+        { model: effectiveModel, apiKey: req.apiKey, baseUrl: req.baseUrl },
+        { temperature: 0.5, maxTokens: AiService.MAX_OUTPUT_TOKENS, signal: AbortSignal.timeout(180_000) },
+      )) {
+        if (!chunk) continue
+        fullText += chunk
+        yield { type: 'delta', text: chunk, totalChars: fullText.length }
+      }
+      const parsed = safeParseJSON<WhiteboardGenResult>(fullText)
+      if (!parsed || !Array.isArray(parsed.items) || parsed.items.length === 0) {
+        this.logger.warn('Whiteboard gen stream: LLM returned no usable items')
+        yield { type: 'done', result: this.mockWhiteboard(req, 'AI 未返回有效 items，已使用占位板书') }
+        return
+      }
+      // 沿用 generateWhiteboard 同款 SVG 安全清洗
+      parsed.items = parsed.items.map(it => {
+        if (it.type === 'image' && typeof it.svg === 'string') {
+          let svg = it.svg
+          svg = svg.replace(/<script\b[\s\S]*?<\/script>/gi, '')
+          svg = svg.replace(/<foreignObject\b[\s\S]*?<\/foreignObject>/gi, '')
+          svg = svg.replace(/<foreignObject\b[^>]*\/?>/gi, '')
+          svg = svg.replace(/\s(on\w+)\s*=\s*("[^"]*"|'[^']*'|[^\s>]*)/gi, '')
+          svg = svg.replace(
+            /\s(href|xlink:href|src)\s*=\s*"\s*(https?:|\/\/|javascript:|data:)[^"]*"/gi,
+            '',
+          )
+          svg = svg.replace(
+            /\s(href|xlink:href|src)\s*=\s*'\s*(https?:|\/\/|javascript:|data:)[^']*'/gi,
+            '',
+          )
+          svg = svg.replace(/@import\s+url\([^)]*\)/gi, '')
+          return { ...it, svg }
+        }
+        return it
+      })
+      yield {
+        type: 'done',
+        result: {
+          title: String(parsed.title || req.topic),
+          subtitle: parsed.subtitle ? String(parsed.subtitle) : undefined,
+          items: parsed.items.slice(0, 15),
+        },
+      }
+    } catch (err: any) {
+      this.logger.error(`Whiteboard gen stream error: ${err?.message || err}`)
+      yield { type: 'done', result: this.mockWhiteboard(req, `AI 生成失败：${err?.message || err}`) }
     }
   }
 

@@ -556,6 +556,11 @@
               @tap="generateAiPracticePreview"
             >{{ aiPracticePreview ? '重新生成预览' : '生成 AI 实践预览' }}</Button>
 
+            <view v-if="isGeneratingAiPractice" class="gen-progress" role="status" aria-live="polite">
+              <view class="gen-progress-bar"><view class="gen-progress-bar-fill" :style="{ width: aiPracticeProgressPercent + '%' }" /></view>
+              <text class="gen-progress-text">AI 正在写 HTML… 已生成 {{ aiPracticeGenChars }} 字符</text>
+            </view>
+
             <view v-if="aiPracticePreview" class="preview-card">
               <view class="preview-card-head">
                 <text class="preview-card-badge">教师端预览</text>
@@ -587,6 +592,11 @@
           <Button block icon-left="sparkles" :loading="isGeneratingWhiteboard" @tap="generateWhiteboard">
             {{ whiteboardPreview ? '重新生成' : '生成板书预览' }}
           </Button>
+
+          <view v-if="isGeneratingWhiteboard" class="gen-progress" role="status" aria-live="polite">
+            <view class="gen-progress-bar"><view class="gen-progress-bar-fill" :style="{ width: whiteboardProgressPercent + '%' }" /></view>
+            <text class="gen-progress-text">AI 正在写板书… 已生成 {{ whiteboardGenChars }} 字符</text>
+          </view>
 
           <view v-if="whiteboardPreview" class="preview-card">
             <view class="preview-card-head">
@@ -840,13 +850,25 @@ const groupDuration = ref(10)
 const whiteboardTopic = ref('')
 const whiteboardHint = ref('')
 const isGeneratingWhiteboard = ref(false)
+const whiteboardGenChars = ref(0)
 const whiteboardPreview = ref<{ topic?: string; title?: string; subtitle?: string; items?: any[]; generatedAt?: string } | null>(null)
 const isGeneratingAiPractice = ref(false)
+const aiPracticeGenChars = ref(0)
 const aiPracticePreview = ref<{ topic?: string; title?: string; description?: string; html?: string; sanitizeStats?: any; generatedAt?: string } | null>(null)
 const aiPracticeHtmlKb = computed(() => {
   const len = aiPracticePreview.value?.html?.length || 0
   return (len / 1024).toFixed(1)
 })
+
+// 生成进度条百分比：用渐近线公式（chars/(chars+target)）让条永远不到 100%，
+// 因为「100%」要留给真正收到 done 事件那一刻 → 视觉上不会"卡在 100% 等很久"
+function asymptoticPercent(chars: number, target: number): number {
+  if (chars <= 0) return 4 // 一开始就给点宽度，避免 0% 看起来没启动
+  const ratio = chars / (chars + target)
+  return Math.max(4, Math.min(95, Math.round(ratio * 100)))
+}
+const aiPracticeProgressPercent = computed(() => asymptoticPercent(aiPracticeGenChars.value, 2500))
+const whiteboardProgressPercent = computed(() => asymptoticPercent(whiteboardGenChars.value, 1500))
 const homeworkTab = ref<'create' | 'review'>('create')
 const homeworkTopic = ref('')
 const homeworkDraft = ref<QuizQuestion[]>([])
@@ -1512,6 +1534,7 @@ const socketHandlers = {
   },
   onWhiteboardGen: (result: any) => {
     isGeneratingWhiteboard.value = false
+    whiteboardGenChars.value = 0
     if (result?.error) {
       whiteboardPreview.value = null
       toast(result.error)
@@ -1520,8 +1543,13 @@ const socketHandlers = {
     whiteboardPreview.value = result
     toast('板书预览已生成，请检查后推送大屏', 'success')
   },
+  onWhiteboardGenProgress: (data: { totalChars: number; done: boolean }) => {
+    if (!isGeneratingWhiteboard.value) return
+    whiteboardGenChars.value = Math.max(whiteboardGenChars.value, data?.totalChars || 0)
+  },
   onInteractiveGen: (result: any) => {
     isGeneratingAiPractice.value = false
+    aiPracticeGenChars.value = 0
     if (result?.error) {
       aiPracticePreview.value = null
       toast(result.error)
@@ -1529,6 +1557,10 @@ const socketHandlers = {
     }
     aiPracticePreview.value = result
     toast('AI 实践预览已生成，请检查后推送给学生', 'success')
+  },
+  onInteractiveGenProgress: (data: { totalChars: number; done: boolean }) => {
+    if (!isGeneratingAiPractice.value) return
+    aiPracticeGenChars.value = Math.max(aiPracticeGenChars.value, data?.totalChars || 0)
   },
   onScreenLock: () => { store.isLocked = true },
   onScreenUnlock: () => { store.isLocked = false },
@@ -1579,7 +1611,9 @@ onMounted(() => {
   s.on(RoomEvent.GroupCreate, socketHandlers.onGroupCreate)
   s.on(RoomEvent.GroupDissolve, socketHandlers.onGroupDissolve)
   s.on(RoomEvent.AiWhiteboardGen, socketHandlers.onWhiteboardGen)
+  s.on(RoomEvent.AiWhiteboardGenProgress, socketHandlers.onWhiteboardGenProgress)
   s.on(RoomEvent.AiInteractiveGen, socketHandlers.onInteractiveGen)
+  s.on(RoomEvent.AiInteractiveGenProgress, socketHandlers.onInteractiveGenProgress)
   s.on(RoomEvent.ScreenLock, socketHandlers.onScreenLock)
   s.on(RoomEvent.ScreenUnlock, socketHandlers.onScreenUnlock)
   s.on(RoomEvent.LessonStart, socketHandlers.onLessonStart)
@@ -1628,7 +1662,9 @@ onUnmounted(() => {
   s.off(RoomEvent.GroupCreate, socketHandlers.onGroupCreate)
   s.off(RoomEvent.GroupDissolve, socketHandlers.onGroupDissolve)
   s.off(RoomEvent.AiWhiteboardGen, socketHandlers.onWhiteboardGen)
+  s.off(RoomEvent.AiWhiteboardGenProgress, socketHandlers.onWhiteboardGenProgress)
   s.off(RoomEvent.AiInteractiveGen, socketHandlers.onInteractiveGen)
+  s.off(RoomEvent.AiInteractiveGenProgress, socketHandlers.onInteractiveGenProgress)
   s.off(RoomEvent.ScreenLock, socketHandlers.onScreenLock)
   s.off(RoomEvent.ScreenUnlock, socketHandlers.onScreenUnlock)
   s.off(RoomEvent.LessonStart, socketHandlers.onLessonStart)
@@ -2538,6 +2574,7 @@ function generateAiPracticePreview() {
   const topic = aiTopic.value.trim()
   if (!topic) return toast('请输入 AI 实践主题')
   isGeneratingAiPractice.value = true
+  aiPracticeGenChars.value = 0
   aiPracticePreview.value = null
   emit(RoomEvent.AiInteractiveGen, {
     topic,
@@ -2546,11 +2583,14 @@ function generateAiPracticePreview() {
     broadcast: false,
     ...getAiConfig(),
   })
+  // 服务端会持续推 ai:interactive:gen:progress，超时阈值放宽到 3 分钟
+  // （HTML 沙盘生成 + 服务端 sanitize 时间较长，原 60s 经常误判）
   setTimeout(() => {
     if (!isGeneratingAiPractice.value) return
     isGeneratingAiPractice.value = false
-    toast('AI 实践生成时间较长，请稍后再试')
-  }, 60000)
+    aiPracticeGenChars.value = 0
+    toast('AI 实践生成超时，请稍后再试或换个简单主题')
+  }, 180000)
 }
 
 function pushAiPracticeToStudents() {
@@ -2589,6 +2629,7 @@ function generateWhiteboard() {
   const topic = whiteboardTopic.value.trim()
   if (!topic) return toast('请输入板书主题')
   isGeneratingWhiteboard.value = true
+  whiteboardGenChars.value = 0
   whiteboardPreview.value = null
   emit(RoomEvent.AiWhiteboardGen, {
     topic,
@@ -2596,11 +2637,13 @@ function generateWhiteboard() {
     broadcast: false,
     ...getAiConfig(),
   })
+  // 服务端会持续推 ai:whiteboard:gen:progress，超时阈值从 30s 放宽到 2 分钟
   setTimeout(() => {
     if (!isGeneratingWhiteboard.value) return
     isGeneratingWhiteboard.value = false
-    toast('AI 板书生成时间较长，请稍后再试')
-  }, 30000)
+    whiteboardGenChars.value = 0
+    toast('AI 板书生成超时，请稍后再试或换个简单主题')
+  }, 120000)
 }
 
 function pushWhiteboardToScreen() {
@@ -4133,6 +4176,37 @@ function stateText(state: StudentInfo['state']) {
   color: var(--color-text-secondary);
   font-size: var(--font-label);
   line-height: var(--line-height-normal);
+}
+
+/* AI 生成中的流式进度条：让 30s+ 的等待不再像"卡死" */
+.gen-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+  padding: 12rpx 16rpx;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-variant);
+}
+
+.gen-progress-bar {
+  position: relative;
+  width: 100%;
+  height: 8rpx;
+  border-radius: 999rpx;
+  background: rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+}
+
+.gen-progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #6c8cff 0%, #b88aff 100%);
+  border-radius: 999rpx;
+  transition: width 240ms ease-out;
+}
+
+.gen-progress-text {
+  font-size: var(--font-caption, 22rpx);
+  color: var(--color-text-secondary);
 }
 
 .report-scroll {
