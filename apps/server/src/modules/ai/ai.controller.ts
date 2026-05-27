@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Sse, Req, MessageEvent } from '@nestjs/common'
+import { Controller, Post, Get, Body, Sse, Req, MessageEvent, HttpCode } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiExcludeEndpoint } from '@nestjs/swagger'
 import type { Request } from 'express'
 import { Observable } from 'rxjs'
@@ -20,6 +20,7 @@ export class AiController {
   }
 
   @Post('chat')
+  @HttpCode(200)
   @ApiOperation({ summary: 'AI对话（支持 body.model 指定 "provider:modelId"，body.apiKey/baseUrl 可选覆盖）' })
   async chat(@Body() body: ChatRequest) {
     const result = await this.aiService.chat(body)
@@ -27,6 +28,7 @@ export class AiController {
   }
 
   @Post('quiz/generate')
+  @HttpCode(200)
   @ApiOperation({ summary: 'AI智能出题（同 chat，支持 model/apiKey/baseUrl 覆盖）' })
   async generateQuiz(@Body() body: QuizGenRequest) {
     const result = await this.aiService.generateQuiz(body)
@@ -34,6 +36,7 @@ export class AiController {
   }
 
   @Post('grade')
+  @HttpCode(200)
   @ApiOperation({ summary: 'AI批改（同 chat，支持 model/apiKey/baseUrl 覆盖；推荐附 commentPrompt 评分细则）' })
   async grade(@Body() body: GradeRequest) {
     const result = await this.aiService.gradeAnswer(body)
@@ -41,6 +44,7 @@ export class AiController {
   }
 
   @Post('generate-interactive')
+  @HttpCode(200)
   @ApiOperation({ summary: 'AI 生成"实践"HTML 交互场景（已做安全清洗，可直接放 iframe）' })
   async generateInteractive(@Body() body: InteractiveGenRequest) {
     const result = await this.aiService.generateInteractive(body)
@@ -48,6 +52,7 @@ export class AiController {
   }
 
   @Post('generate-whiteboard')
+  @HttpCode(200)
   @ApiOperation({ summary: 'AI 生成结构化"板书"（含 latex/svg/table/callout，给大屏展示）' })
   async generateWhiteboard(@Body() body: WhiteboardGenRequest) {
     const result = await this.aiService.generateWhiteboard(body)
@@ -55,6 +60,7 @@ export class AiController {
   }
 
   @Post('generate-courseware')
+  @HttpCode(200)
   @ApiOperation({ summary: 'AI 生成"演示课件"结构化大纲（slides[]，给大屏展示）' })
   async generateCourseware(@Body() body: CoursewareGenRequest) {
     const result = await this.aiService.generateCourseware(body)

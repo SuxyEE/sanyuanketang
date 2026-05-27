@@ -567,7 +567,7 @@ function startExplain(q: WrongQuestion) {
     },
     timeout: 30_000,
     success: res => {
-      if (res.statusCode !== 200) {
+      if (res.statusCode < 200 || res.statusCode >= 300) {
         explainStatus.value = 'error'
         explainError.value = `服务返回 ${res.statusCode}`
         return
@@ -1000,7 +1000,7 @@ onMounted(() => {
 .explain-card {
   display: flex;
   flex-direction: column;
-  max-height: 80vh;
+  max-height: 100%;
   width: 100%;
 }
 .explain-head {
@@ -1144,6 +1144,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  padding-bottom: var(--space-4);
 }
 .explain-answer-head {
   display: flex;

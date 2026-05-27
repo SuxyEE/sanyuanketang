@@ -57,7 +57,7 @@ function onScrimTap() {
 
   &.align-center { align-items: center; justify-content: center; }
   &.align-top { align-items: flex-start; justify-content: center; padding-top: max(var(--space-8), var(--safe-top)); }
-  &.align-bottom { align-items: flex-end; justify-content: center; padding-bottom: max(var(--space-8), var(--safe-bottom)); }
+  &.align-bottom { align-items: flex-end; justify-content: center; padding-bottom: max(var(--space-4), var(--safe-bottom)); }
   &.align-right { align-items: stretch; justify-content: flex-end; padding: 0; }
   &.align-left { align-items: stretch; justify-content: flex-start; padding: 0; }
 
