@@ -16,7 +16,8 @@
             "delay" : 0
         },
         "modules" : {
-            "Geolocation" : {}
+            "Geolocation" : {},
+            "Camera" : {}
         },
         "statusbar" : {
             "immersed" : true,
