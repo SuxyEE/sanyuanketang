@@ -153,6 +153,8 @@ const today = new Date().toLocaleDateString('zh-CN', {
 })
 
 const todayCourses = ref<Course[]>([
+  { id: 'ind-vfd', name: '传送带变频调速控制', subject: '现代工业控制技术', className: '智控2401班', room: '工业控制实训室 · YTMDK-1', time: '09:00 - 09:45', color: '#e6a23c' },
+  { id: 'ind-servo', name: 'V90 伺服精确定位', subject: '运动控制技术', className: '智控2401班', room: '工业控制实训室 · YTMDK-1', time: '10:00 - 10:45', color: '#1c7293' },
   { id: '1', name: '工业机器人编程实训', subject: '工业机器人技术', className: '机器人2401班', room: '实训楼 A302', time: '14:30 - 15:15', color: '#2f6bff' },
   { id: '2', name: '三维建模与逆向工程', subject: '数字化设计与制造', className: '数设2401班', room: '数字工坊 206', time: '15:30 - 16:15', color: '#20a546' },
   { id: '3', name: 'PLC 控制技术基础', subject: '智能控制技术', className: '智控2402班', room: '自动化实训室', time: '16:30 - 17:15', color: '#7c4dff' },
