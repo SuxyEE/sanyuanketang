@@ -3,16 +3,14 @@
     <el-aside :width="isCollapsed ? '64px' : '232px'" class="layout-aside">
       <div class="logo-area" :class="{ 'is-collapsed': isCollapsed }">
         <span class="logo-mark" aria-hidden="true">
-          <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <defs>
-              <linearGradient id="logoGrad" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stop-color="#5b8def" />
-                <stop offset="100%" stop-color="#a370f7" />
-              </linearGradient>
-            </defs>
-            <rect x="3" y="3" width="26" height="26" rx="8" fill="url(#logoGrad)" />
-            <path d="M10 21V11l6 5 6-5v10" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none" />
-            <circle cx="16" cy="22.5" r="1.2" fill="#fff" />
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="12" cy="12" r="10.6" fill="none" stroke="#c6dfd4" stroke-width="1.6" />
+            <g transform="translate(12 12)">
+              <path d="M0 -1.6C-2.9 -4.3 -3 -8.1 0 -9.2 3 -8.1 2.9 -4.3 0 -1.6Z" fill="#e6c74e" transform="rotate(-45)" />
+              <path d="M0 -1.6C-2.9 -4.3 -3 -8.1 0 -9.2 3 -8.1 2.9 -4.3 0 -1.6Z" fill="#93bd9e" transform="rotate(45)" />
+              <path d="M0 -1.6C-2.9 -4.3 -3 -8.1 0 -9.2 3 -8.1 2.9 -4.3 0 -1.6Z" fill="#e0c24a" transform="rotate(-135)" />
+              <path d="M0 -1.6C-2.9 -4.3 -3 -8.1 0 -9.2 3 -8.1 2.9 -4.3 0 -1.6Z" fill="#e6c74e" transform="rotate(135)" />
+            </g>
           </svg>
         </span>
         <span v-show="!isCollapsed" class="logo-text">
