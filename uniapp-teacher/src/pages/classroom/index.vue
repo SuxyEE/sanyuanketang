@@ -2429,6 +2429,135 @@ function buildGeneratedSlideSpecs(): GeneratedSlideSpec[] {
   const course = store.courseName || '三元课堂'
   const lesson = store.lessonTitle || '课堂教学'
   const room = store.roomCode || '------'
+  // 对接 YTMDK-1 工业控制实训平台：按所选课程返回真实案例课件，其它课程用通用模板
+  const tag = `${course}${lesson}`
+  if (/变频|调速|传送带|G120|VFD/i.test(tag)) return buildVfdSlideSpecs(room)
+  if (/伺服|定位|V90|运动控制|servo/i.test(tag)) return buildServoSlideSpecs(room)
+  return buildGenericSlideSpecs(course, lesson, room)
+}
+
+/** 案例一：传送带变频调速控制（S7-1200 + G120C + KTP700） */
+function buildVfdSlideSpecs(room: string): GeneratedSlideSpec[] {
+  return [
+    {
+      kicker: '三元课堂 · 课程导入', title: '传送带变频调速控制', subtitle: `现代工业控制技术 · 课堂码 ${room}`, accent: '#e6a23c',
+      blocks: [
+        { title: '场景任务', body: '产线传送带需一键启停，并在低速上料·中速运行·高速返程三档间切换', accent: '#2f6bff' },
+        { title: '对接设备', body: '西门子 S7-1215C PLC + G120C 变频器 + KTP700 触摸屏', accent: '#e6a23c' },
+        { title: '网络组网', body: 'PROFINET 一网到底，PLC 直接指挥变频器与触摸屏', accent: '#20a546' },
+        { title: '岗位对接', body: '电气调试员 · PLC 程序员 · 设备运维', accent: '#7c4dff' },
+      ],
+    },
+    {
+      kicker: '现代工业控制技术', title: '本节课学习目标', subtitle: '从会接线到会调速，把变频控制讲透练熟', accent: '#20a546',
+      blocks: [
+        { title: '知识理解', body: '说清 PLC·变频器·PROFINET·多段速的作用与关系', accent: '#2f6bff' },
+        { title: '操作能力', body: '完成 PROFINET 组态、启停+多段速 PLC 编程、HMI 画面', accent: '#20a546' },
+        { title: '问题诊断', body: '能判断通信不通、过流报警等常见故障并处理', accent: '#f5a623' },
+        { title: '安全素养', body: '急停优先、正反转联锁、规范用电', accent: '#e23d3d' },
+      ],
+    },
+    {
+      kicker: '课堂流程', title: '教学活动安排（五步走）', subtitle: '教师端控制节奏，大屏与学生端实时同步', accent: '#f5a623',
+      blocks: [
+        { title: '01 硬件接线', body: '24V 电源、DI/DO 接线、PROFINET 网线，注意 NPN/PNP', accent: '#2f6bff' },
+        { title: '02 网络组态', body: 'TIA Portal 组网、分配 IP、G120C 选标准报文', accent: '#20a546' },
+        { title: '03 编程+HMI', body: '启停逻辑 + 三段速控制字 + 急停联锁，绑定触摸屏', accent: '#f5a623' },
+        { title: '04 联机调试', body: '下载试运行，三档验证、急停验证', accent: '#eb2f96' },
+      ],
+    },
+    {
+      kicker: '核心知识', title: '关键概念速览', subtitle: '配合设备现场演示，看得见现象', accent: '#7c4dff',
+      blocks: [
+        { title: '变频调速', body: '转速 ∝ 频率（n≈60f/p），调频率就是调速', accent: '#2f6bff' },
+        { title: 'PROFINET', body: '一网到底，PLC·变频器·触摸屏同一张工业以太网', accent: '#20a546' },
+        { title: '多段速', body: '用控制字的位组合选中低/中/高预置转速', accent: '#f5a623' },
+        { title: '常见误区', body: '把"调速"当成"调电压"；忘记急停最高优先', accent: '#e23d3d' },
+      ],
+    },
+    {
+      kicker: '实训任务', title: '课堂练习与提交要求', subtitle: '把练习结果留在学生端，便于反馈复盘', accent: '#0f8b8d',
+      blocks: [
+        { title: '任务说明', body: '用 PLC + G120C 实现传送带启停与三段调速', accent: '#2f6bff' },
+        { title: '过程记录', body: '保留接线图、控制字与频率参数截图', accent: '#0f8b8d' },
+        { title: '自查标准', body: '三档速度正确、急停有效、软启动平滑', accent: '#20a546' },
+        { title: '教师反馈', body: '依据提交推送测验、讲评或分组', accent: '#eb2f96' },
+      ],
+    },
+    {
+      kicker: '课堂收束', title: '随堂检测与总结', subtitle: '用数据判断是否进入下一节（伺服定位）', accent: '#eb2f96',
+      blocks: [
+        { title: '随堂测验', body: '变频调速本质、PROFINET、多段速 3~5 题', accent: '#f5a623' },
+        { title: '集中答疑', body: '优先处理通信不通、F30001 过流等共性问题', accent: '#2f6bff' },
+        { title: '作业延伸', body: '画出接线图并标注控制字位含义', accent: '#7c4dff' },
+        { title: '下节预告', body: 'V90 伺服精确定位：从"转得快"到"停得准"', accent: '#20a546' },
+      ],
+    },
+  ]
+}
+
+/** 案例二：V90 伺服精确定位（S7-1200 + V90 + 编码器闭环） */
+function buildServoSlideSpecs(room: string): GeneratedSlideSpec[] {
+  return [
+    {
+      kicker: '三元课堂 · 课程导入', title: 'V90 伺服精确定位', subtitle: `运动控制技术 · 课堂码 ${room}`, accent: '#1c7293',
+      blocks: [
+        { title: '场景任务', body: '料带每次精确送 100.00mm，或转台精确分度到 0/90/180/270°', accent: '#2f6bff' },
+        { title: '对接设备', body: 'S7-1215C PLC + V90 PN 伺服 + 伺服电机（编码器）', accent: '#1c7293' },
+        { title: '闭环控制', body: '编码器全闭环反馈，定位误差可到 0.01mm', accent: '#20a546' },
+        { title: '岗位对接', body: '伺服调试工程师 · 运动控制程序员', accent: '#7c4dff' },
+      ],
+    },
+    {
+      kicker: '运动控制技术', title: '本节课学习目标', subtitle: '从"转得快慢"进阶到"停得准不准"', accent: '#20a546',
+      blocks: [
+        { title: '知识理解', body: '说清伺服位置闭环与变频开环调速的区别', accent: '#2f6bff' },
+        { title: '操作能力', body: 'V-ASSISTANT 调试、组态定位轴 TO、MC 指令编程', accent: '#20a546' },
+        { title: '问题诊断', body: '能处理跟随误差超差、走位不动等故障', accent: '#f5a623' },
+        { title: '安全素养', body: '先回零建立原点，软/硬限位防撞机', accent: '#e23d3d' },
+      ],
+    },
+    {
+      kicker: '课堂流程', title: '教学活动安排（五步走）', subtitle: '教师端控制节奏，大屏与学生端同步', accent: '#f5a623',
+      blocks: [
+        { title: '01 接线上电', body: '动力线·编码器线·PROFINET，编码器线注意屏蔽', accent: '#2f6bff' },
+        { title: '02 V-ASSISTANT', body: '设电机参数、Jog 试转、一键增益优化', accent: '#20a546' },
+        { title: '03 组态+编程', body: '定位轴 TO 关联报文，MC_Power→Home→MoveAbsolute', accent: '#f5a623' },
+        { title: '04 联机验证', body: '输入目标走位，比对目标 vs 实际、重复定位精度', accent: '#eb2f96' },
+      ],
+    },
+    {
+      kicker: '核心知识', title: '关键概念速览', subtitle: '精度肉眼可验证，看得见分毫', accent: '#7c4dff',
+      blocks: [
+        { title: '伺服闭环', body: '编码器实时反馈，指令-实际偏差自动纠正', accent: '#2f6bff' },
+        { title: '编码器', body: '增量式上电必先回零；绝对值式免回零', accent: '#20a546' },
+        { title: 'MC 指令时序', body: '使能 Power → 回零 Home → 定位 MoveAbsolute', accent: '#f5a623' },
+        { title: '常见误区', body: '未回零直接定位；未使能就下 Move 指令', accent: '#e23d3d' },
+      ],
+    },
+    {
+      kicker: '实训任务', title: '课堂练习与提交要求', subtitle: '把练习结果留在学生端', accent: '#0f8b8d',
+      blocks: [
+        { title: '任务说明', body: '让伺服轴在 50 与 150 之间来回定位 10 次', accent: '#2f6bff' },
+        { title: '过程记录', body: '记录目标值与实际到位值、重复定位精度', accent: '#0f8b8d' },
+        { title: '自查标准', body: '到位准确、时序正确、限位有效', accent: '#20a546' },
+        { title: '教师反馈', body: '依据精度数据推送测验或讲评', accent: '#eb2f96' },
+      ],
+    },
+    {
+      kicker: '课堂收束', title: '随堂检测与总结', subtitle: '用数据判断掌握情况', accent: '#eb2f96',
+      blocks: [
+        { title: '随堂测验', body: '回零时序、报文一致、MC 指令 3~5 题', accent: '#f5a623' },
+        { title: '集中答疑', body: '优先处理 F7452 跟随误差、走位不动等', accent: '#2f6bff' },
+        { title: '作业延伸', body: '写出 MoveAbsolute 不动的排查清单', accent: '#7c4dff' },
+        { title: '课堂总结', body: '从调速到定位，工业控制两大基本功贯通', accent: '#20a546' },
+      ],
+    },
+  ]
+}
+
+/** 通用兜底模板（未匹配到工业案例时使用） */
+function buildGenericSlideSpecs(course: string, lesson: string, room: string): GeneratedSlideSpec[] {
   return [
     {
       kicker: '三元课堂 · 课程导入',
