@@ -3,19 +3,11 @@
     <el-aside :width="isCollapsed ? '64px' : '232px'" class="layout-aside">
       <div class="logo-area" :class="{ 'is-collapsed': isCollapsed }">
         <span class="logo-mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="12" cy="12" r="10.6" fill="none" stroke="#c6dfd4" stroke-width="1.6" />
-            <g transform="translate(12 12)">
-              <path d="M0 -1.6C-2.9 -4.3 -3 -8.1 0 -9.2 3 -8.1 2.9 -4.3 0 -1.6Z" fill="#e6c74e" transform="rotate(-45)" />
-              <path d="M0 -1.6C-2.9 -4.3 -3 -8.1 0 -9.2 3 -8.1 2.9 -4.3 0 -1.6Z" fill="#93bd9e" transform="rotate(45)" />
-              <path d="M0 -1.6C-2.9 -4.3 -3 -8.1 0 -9.2 3 -8.1 2.9 -4.3 0 -1.6Z" fill="#e0c24a" transform="rotate(-135)" />
-              <path d="M0 -1.6C-2.9 -4.3 -3 -8.1 0 -9.2 3 -8.1 2.9 -4.3 0 -1.6Z" fill="#e6c74e" transform="rotate(135)" />
-            </g>
-          </svg>
+          <img src="/logo.png" alt="三元课堂" style="width: 100%; height: 100%; object-fit: contain;" />
         </span>
         <span v-show="!isCollapsed" class="logo-text">
-          <span class="logo-name">智慧课堂</span>
-          <span class="logo-brand">三元课堂 · 管理中心</span>
+          <span class="logo-name">三元课堂</span>
+          <span class="logo-brand">管理后台</span>
         </span>
       </div>
 
