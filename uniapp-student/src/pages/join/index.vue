@@ -31,7 +31,7 @@
           </view>
         </view>
       </view>
-      <text class="version-text">v1.0.0 · 智慧课堂学生端</text>
+      <text class="version-text">v1.0.0 · 三元课堂学生端</text>
     </view>
 
     <!-- 右侧输入区 -->

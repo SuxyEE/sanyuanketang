@@ -101,6 +101,48 @@ export const RoomEvent = {
   StudentFocusLost: 'student:focus:lost',
   StudentFocusGained: 'student:focus:gained',
 
+  // ===== P0 课堂气氛互动包 =====
+  // 投票/问卷/词云/评分（统一 poll 活动，kind: choice|text|rating）
+  PollStart: 'poll:start',
+  PollSubmit: 'poll:submit',
+  PollSubmitAck: 'poll:submit:ack',
+  PollUpdate: 'poll:update',
+  PollStop: 'poll:stop',
+
+  // 弹幕
+  DanmakuSend: 'danmaku:send',
+  DanmakuPush: 'danmaku:push',
+  DanmakuToggle: 'danmaku:toggle',
+  DanmakuClear: 'danmaku:clear',
+
+  // 表情/情绪反馈
+  ReactionSend: 'reaction:send',
+  ReactionPush: 'reaction:push',
+  ReactionStats: 'reaction:stats',
+
+  // 随机点名转盘结果
+  RollCallResult: 'roll:call:result',
+
+  // 课堂计时器/倒计时
+  TimerStart: 'timer:start',
+  TimerStop: 'timer:stop',
+  TimerSync: 'timer:sync',
+
+  // 积分 / 排行榜 / 小组 PK
+  PointsAward: 'points:award',
+  LeaderboardUpdate: 'leaderboard:update',
+
+  // 答案上墙 / 作品墙
+  WallOpen: 'wall:open',
+  WallSubmit: 'wall:submit',
+  WallItem: 'wall:item',
+  WallUpdate: 'wall:update',
+  WallPick: 'wall:pick',
+  WallClose: 'wall:close',
+
+  // 反馈闭环：教师回复学生提问
+  QuestionReply: 'question:reply',
+
   ErrorPermission: 'error:permission',
   ErrorInput: 'error:input',
   ErrorAuth: 'error:auth',

@@ -193,7 +193,7 @@
               <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="rgba(65,120,255,0.5)" stroke-width="1.5">
                 <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
               </svg>
-              <h2>{{ isTeacherControlled ? '课堂已接管' : '智慧课堂' }}</h2>
+              <h2>{{ isTeacherControlled ? '课堂已接管' : '三元课堂' }}</h2>
               <p>{{ isTeacherControlled ? '请学生扫码加入课堂' : '等待教师扫码接管大屏...' }}</p>
               <div v-if="isTeacherControlled" class="student-join-panel">
                 <img :src="studentQrUrl" alt="学生加入二维码" />
@@ -262,16 +262,44 @@
       :board="aiWhiteboard"
       @close="aiWhiteboard = null"
     />
+
+    <!-- ===== P0 课堂气氛互动展示层 ===== -->
+    <PollDisplay
+      v-if="poll"
+      :poll="poll"
+      :stats="pollStats"
+      :total="pollTotal"
+      :ended="pollEnded"
+    />
+    <ClassTimerDisplay v-if="classTimer" :timer="classTimer" />
+    <RollCallWheel v-if="rollCallResult" :result="rollCallResult" @close="rollCallResult = null" />
+    <ReactionLayer ref="reactionLayerRef" :stats="reactionStats" />
+    <DanmakuLayer ref="danmakuLayerRef" />
+    <WrongBookScreen v-if="showWrongBook" :lesson-id="currentLessonId" @close="showWrongBook = false" />
+    <LeaderboardScreen
+      v-if="showLeaderboard && leaderboard"
+      ref="leaderboardRef"
+      :data="leaderboard"
+      @close="showLeaderboard = false"
+    />
+    <!-- 答案上墙 / 作品墙：自包含组件，自行订阅 Wall 事件与 room:joined 快照 -->
+    <AnswerWall />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { RoomEvent } from '@snyuan/shared'
 import { useClassroomStore } from '../stores/classroom'
 import { useSocket } from '../composables/useSocket'
 import { WS_URL } from '../shared/backend'
 import AiWhiteboard from '../components/AiWhiteboard.vue'
+import WrongBookScreen from '../components/WrongBookScreen.vue'
+import LeaderboardScreen from '../components/LeaderboardScreen.vue'
+import AnswerWall from '../components/AnswerWall.vue'
+// script 内用到 typeof ReactionLayer（reactionLayerRef 类型），需显式 import
+import ReactionLayer from '../components/ReactionLayer.vue'
 
 interface AiWhiteboardPayload {
   topic?: string
@@ -283,6 +311,53 @@ interface AiWhiteboardPayload {
 
 const aiWhiteboard = ref<AiWhiteboardPayload | null>(null)
 const aiWhiteboardRef = ref<InstanceType<typeof AiWhiteboard> | null>(null)
+
+/* ===== P0 课堂气氛互动（投票/词云/评分、弹幕、情绪、点名转盘、计时器） ===== */
+interface PollInfo {
+  pollId: string
+  kind: 'choice' | 'text' | 'rating'
+  question: string
+  options: string[]
+  maxSelect?: number
+  max?: number
+  startedAt: number
+  durationSec?: number
+}
+interface ClassTimerInfo { timerId: string; durationSec: number; label: string; startedAt: number }
+interface RollResultInfo { studentId: string; studentName: string; candidates: { id: string; name: string }[] }
+interface ReactionStatsInfo { counts: Record<string, number>; windowSec: number }
+interface LeaderEntry { studentId: string; name: string; points: number; rank: number }
+interface LeaderGroup { groupId: string; groupName: string; points: number; memberCount: number; rank: number }
+interface LeaderboardData { top: LeaderEntry[]; groups: LeaderGroup[]; totalStudents: number }
+
+const poll = ref<PollInfo | null>(null)
+const pollStats = ref<any>(null)
+const pollTotal = ref(0)
+const pollEnded = ref(false)
+const classTimer = ref<ClassTimerInfo | null>(null)
+const rollCallResult = ref<RollResultInfo | null>(null)
+const reactionStats = ref<ReactionStatsInfo | null>(null)
+const danmakuLayerRef = ref<{ push: (d: { id: string; text: string; studentName: string; color?: string }) => void; clear: () => void; setEnabled: (v: boolean) => void } | null>(null)
+const reactionLayerRef = ref<InstanceType<typeof ReactionLayer> | null>(null)
+const showWrongBook = ref(false)
+const leaderboard = ref<LeaderboardData | null>(null)
+const showLeaderboard = ref(false)
+const leaderboardRef = ref<InstanceType<typeof LeaderboardScreen> | null>(null)
+let pollStopTimer: ReturnType<typeof setTimeout> | null = null
+
+function resetVibeState() {
+  if (pollStopTimer) { clearTimeout(pollStopTimer); pollStopTimer = null }
+  poll.value = null
+  pollStats.value = null
+  pollTotal.value = 0
+  pollEnded.value = false
+  classTimer.value = null
+  rollCallResult.value = null
+  reactionStats.value = null
+  leaderboard.value = null
+  showLeaderboard.value = false
+  danmakuLayerRef.value?.clear()
+}
 
 /* ===== 蒙版涂鸦（只读，跟随教师端） ===== */
 interface AnnoPoint { x: number; y: number }
@@ -595,6 +670,35 @@ const handlers = {
     if (data.lessonMeta) handlers.onLessonStart({ ...data.lessonMeta, resetState: false })
     if (data.members) handlers.onMemberUpdate(data)
     annoApplySnapshot(data?.annotations)
+    // P0 迟加入 / 重连同步：投票、计时器、弹幕开关
+    if (data.activePoll) {
+      poll.value = {
+        pollId: data.activePoll.pollId,
+        kind: data.activePoll.kind,
+        question: data.activePoll.question,
+        options: data.activePoll.options || [],
+        maxSelect: data.activePoll.maxSelect,
+        max: data.activePoll.max,
+        startedAt: data.activePoll.startedAt,
+        durationSec: data.activePoll.durationSec,
+      }
+      pollStats.value = null
+      pollTotal.value = data.activePoll.total || 0
+      pollEnded.value = false
+    } else {
+      poll.value = null
+    }
+    classTimer.value = data.classTimer || null
+    if (typeof data.danmakuEnabled === 'boolean') {
+      danmakuLayerRef.value?.setEnabled(data.danmakuEnabled)
+    }
+    // P1 游戏化：排行榜快照恢复（迟加入 / 重连）
+    if (data.leaderboard) {
+      leaderboard.value = data.leaderboard
+      if (data.leaderboard.top?.length) showLeaderboard.value = true
+    } else {
+      leaderboard.value = null
+    }
   },
   onSlideGoto: (data: { index: number; total: number }) => {
     store.currentSlide = data.index
@@ -715,6 +819,9 @@ const handlers = {
     store.attendance = null
     store.aiPractice = null
     aiWhiteboard.value = null
+    resetVibeState()
+    // 课堂结束：拉取并展示本堂错题 TopN 报告（组件内部 HTTP 拉取，无数据/失败自动关闭）
+    if (currentLessonId.value) showWrongBook.value = true
     isTeacherControlled.value = false
     // 先让"本节课已结束"卡片露脸 1.8s，再切到教师接管二维码
     if (lessonEndPickerTimer) clearTimeout(lessonEndPickerTimer)
@@ -761,9 +868,82 @@ const handlers = {
       store.attendance = null
       store.aiPractice = null
       aiWhiteboard.value = null
+      resetVibeState()
     }
     isTeacherControlled.value = true
     showPicker.value = false
+  },
+  // ===== P0 投票 / 词云 / 评分 =====
+  onPollStart: (data: PollInfo) => {
+    if (pollStopTimer) { clearTimeout(pollStopTimer); pollStopTimer = null }
+    poll.value = {
+      pollId: data.pollId,
+      kind: data.kind,
+      question: data.question,
+      options: data.options || [],
+      maxSelect: data.maxSelect,
+      max: data.max,
+      startedAt: data.startedAt,
+      durationSec: data.durationSec,
+    }
+    pollStats.value = null
+    pollTotal.value = 0
+    pollEnded.value = false
+    store.aiPractice = null
+  },
+  onPollUpdate: (data: { pollId: string; kind: string; total: number; stats: any }) => {
+    if (!poll.value || poll.value.pollId !== data.pollId) return
+    pollStats.value = data.stats
+    pollTotal.value = data.total
+  },
+  onPollStop: (data: { pollId: string; total?: number; finalStats?: any }) => {
+    if (poll.value && poll.value.pollId !== data.pollId) return
+    if (data.finalStats !== undefined) pollStats.value = data.finalStats
+    if (typeof data.total === 'number') pollTotal.value = data.total
+    pollEnded.value = true
+    if (pollStopTimer) clearTimeout(pollStopTimer)
+    pollStopTimer = setTimeout(() => {
+      poll.value = null
+      pollStats.value = null
+      pollEnded.value = false
+      pollStopTimer = null
+    }, 6000)
+  },
+  // ===== P0 弹幕 =====
+  onDanmakuPush: (data: { id: string; text: string; studentName: string; color?: string }) => {
+    danmakuLayerRef.value?.push(data)
+  },
+  onDanmakuClear: () => {
+    danmakuLayerRef.value?.clear()
+  },
+  onDanmakuToggle: (data: { enabled: boolean }) => {
+    danmakuLayerRef.value?.setEnabled(!!data.enabled)
+  },
+  // ===== P0 情绪反馈 =====
+  onReactionPush: (data: { type: string; studentId: string }) => {
+    reactionLayerRef.value?.push(data.type)
+  },
+  onReactionStats: (data: ReactionStatsInfo) => {
+    reactionStats.value = data
+  },
+  // ===== P0 随机点名转盘 =====
+  onRollCallResult: (data: RollResultInfo) => {
+    rollCallResult.value = data
+  },
+  // ===== P0 课堂计时器 =====
+  onTimerStart: (data: ClassTimerInfo) => {
+    classTimer.value = data
+  },
+  onTimerStop: () => {
+    classTimer.value = null
+  },
+  // ===== P1 游戏化：实时排行榜 + 小组 PK =====
+  onLeaderboardUpdate: (data: LeaderboardData) => {
+    leaderboard.value = data
+    if (data?.top?.length) showLeaderboard.value = true
+  },
+  onPointsAward: (data: { studentId: string; delta: number; reason?: string; total?: number }) => {
+    leaderboardRef.value?.flashAward(data)
   },
 }
 
@@ -817,6 +997,20 @@ onMounted(() => {
   s.on('annotation:stroke:end', handlers.onAnnotationStrokeEnd)
   s.on('annotation:clear', handlers.onAnnotationClear)
   s.on('annotation:undo', handlers.onAnnotationUndo)
+  // P0 课堂气氛互动
+  s.on(RoomEvent.PollStart, handlers.onPollStart)
+  s.on(RoomEvent.PollUpdate, handlers.onPollUpdate)
+  s.on(RoomEvent.PollStop, handlers.onPollStop)
+  s.on(RoomEvent.DanmakuPush, handlers.onDanmakuPush)
+  s.on(RoomEvent.DanmakuClear, handlers.onDanmakuClear)
+  s.on(RoomEvent.DanmakuToggle, handlers.onDanmakuToggle)
+  s.on(RoomEvent.ReactionPush, handlers.onReactionPush)
+  s.on(RoomEvent.ReactionStats, handlers.onReactionStats)
+  s.on(RoomEvent.RollCallResult, handlers.onRollCallResult)
+  s.on(RoomEvent.TimerStart, handlers.onTimerStart)
+  s.on(RoomEvent.TimerStop, handlers.onTimerStop)
+  s.on(RoomEvent.LeaderboardUpdate, handlers.onLeaderboardUpdate)
+  s.on(RoomEvent.PointsAward, handlers.onPointsAward)
   window.addEventListener('resize', resizeAnnoCanvas)
 
   tickInterval = setInterval(() => { tickClock.value = Date.now() }, 1000)

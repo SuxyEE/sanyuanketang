@@ -64,10 +64,9 @@ const wrap = (body: string): string =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`
 
 export const icons: Record<IconName, string> = {
-  // 三元课堂自有 logo（三个同心圆 + 中央书本，传达"教学/课堂/三元"概念）
-  logo: wrap(
-    '<circle cx="12" cy="12" r="9.5" stroke-opacity="0.25"/><circle cx="12" cy="12" r="6.5" stroke-opacity="0.55"/><path d="M9 10v5l3-1.4 3 1.4v-5"/><path d="M9 10c0-.55.45-1 1-1h4c.55 0 1 .45 1 1"/>',
-  ),
+  // 三元课堂自有 logo（蓝底白「三」字圆角方标，与四端 favicon 一致）
+  logo:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="5.5" fill="#2563eb"/><text x="12" y="17.4" text-anchor="middle" font-family="sans-serif" font-size="15" font-weight="bold" fill="#ffffff">三</text></svg>',
 
   'graduation-cap': wrap(
     '<path d="M22 10v6"/><path d="M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c0 1 3 3 6 3s6-2 6-3v-5"/>',

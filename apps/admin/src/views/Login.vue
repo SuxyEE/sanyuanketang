@@ -3,10 +3,10 @@
     <div class="login-card">
       <div class="login-logo">
         <span class="logo-emoji" aria-hidden="true">
-          <img src="/logo.png" alt="三元课堂" width="56" height="56" style="object-fit: contain;" />
+          <svg width="56" height="56" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><rect width="32" height="32" rx="7" fill="#2563eb"/><text x="16" y="23" font-size="20" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-weight="bold">三</text></svg>
         </span>
         <h1>集美工业职业学院</h1>
-        <p>三元课堂 · AI 智能教学系统</p>
+        <p>三元课堂 · AI 智慧课堂系统</p>
       </div>
       <el-form ref="formRef" :model="form" :rules="rules" class="login-form" size="large" @submit.prevent>
         <el-form-item prop="username">

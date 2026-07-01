@@ -65,7 +65,25 @@
     <!-- ============ 4. 错题列表 ============ -->
     <scroll-view scroll-y class="list-scroll" enable-back-to-top>
       <view class="list">
-        <view v-if="filteredList.length === 0" class="empty-state">
+        <view v-if="loading && filteredList.length === 0" class="state-block">
+          <view class="loading-typing">
+            <view class="typing-dot"></view>
+            <view class="typing-dot"></view>
+            <view class="typing-dot"></view>
+          </view>
+          <text class="state-text">正在加载错题…</text>
+        </view>
+
+        <view v-else-if="loadError && filteredList.length === 0" class="state-block">
+          <view class="empty-icon error">
+            <Icon name="alert-circle" size="3xl" tone="danger" />
+          </view>
+          <text class="empty-title">加载失败</text>
+          <text class="empty-desc">{{ loadError }}</text>
+          <Button variant="tonal" size="md" icon-left="refresh-cw" @tap="loadWrongBook()">重试</Button>
+        </view>
+
+        <view v-else-if="filteredList.length === 0" class="empty-state">
           <view class="empty-icon">
             <Icon name="check-circle" size="3xl" tone="success" />
           </view>
@@ -243,7 +261,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { useStudentStore } from '@/stores/student'
 import { useOrientation } from '@/composables/useOrientation'
 import { useMarkdown } from '@/composables/useMarkdown'
 import { API_BASE } from '@/shared/config'
@@ -257,7 +276,41 @@ import Overlay from '@/components/ui/Overlay.vue'
 const { isLandscape } = useOrientation()
 const { renderMarkdown } = useMarkdown()
 
-/* ============ 错题 mock 数据 ============ */
+/* ============ 错题数据（真实接口） ============ */
+const studentStore = useStudentStore()
+
+interface ApiWrongOption {
+  key: string
+  content: string
+}
+
+interface ApiWrongQuestion {
+  id: string
+  studentId: string
+  lessonId: string
+  taskId: string
+  questionId: string
+  subject: string
+  questionContent: string
+  questionType: string
+  options?: ApiWrongOption[]
+  correctAnswer: string
+  analysis: string
+  wrongAnswer: string
+  knowledgePoints: string[]
+  score: number
+  mastered: boolean
+  createdAt: string
+}
+
+interface WrongStats {
+  total: number
+  mastered: number
+  unmastered: number
+  subjects: { subject: string; count: number }[]
+}
+
+// 视图模型（模板渲染使用）
 interface WrongQuestion {
   id: string
   subject: string
@@ -273,189 +326,194 @@ interface WrongQuestion {
   aiExplained: boolean
 }
 
-// 课件中常见知识盲点（来自三元课堂业务上下文）
-const wrongList = reactive<WrongQuestion[]>([
-  {
-    id: 'w1',
-    subject: 'PLC 编程',
-    topic: '梯形图基础',
-    content: '在 PLC 梯形图中，下列对常开触点 ─| |─ 与常闭触点 ─|/|─ 的描述哪一项是正确的？',
-    options: [
-      '常开触点检测到信号为 0 时导通',
-      '常开触点检测到信号为 1 时导通',
-      '常闭触点检测到信号为 1 时导通',
-      '常开触点与常闭触点行为相同',
-    ],
-    myAnswerIndex: 0,
-    correctAnswerIndex: 1,
-    myAnswer: 'A · 常开触点检测到信号为 0 时导通',
-    correctAnswer: 'B · 常开触点检测到信号为 1 时导通',
-    time: '05-26 14:48',
-    mastered: false,
-    aiExplained: false,
-  },
-  {
-    id: 'w2',
-    subject: '工业机器人',
-    topic: '六轴坐标变换',
-    content: '六轴机器人将工件坐标系下的位姿变换到基座坐标系，需要进行几次坐标变换？',
-    options: [
-      '1 次（直接变换）',
-      '6 次（每轴一次）',
-      '与机器人结构无关，固定 4 次',
-      '取决于关节配置，一般 6-8 次',
-    ],
-    myAnswerIndex: 0,
-    correctAnswerIndex: 1,
-    myAnswer: 'A · 1 次（直接变换）',
-    correctAnswer: 'B · 6 次（每轴一次）',
-    time: '05-26 11:32',
-    mastered: false,
-    aiExplained: true,
-  },
-  {
-    id: 'w3',
-    subject: '网络配置',
-    topic: 'VLAN 间路由',
-    content: '在三层交换机上配置 VLAN 间路由时，下列哪一项不是必须的步骤？',
-    options: [
-      '创建对应 VLAN',
-      '配置 VLAN 接口（SVI）IP',
-      '开启 ip routing',
-      '为每条 VLAN 关联 NAT 策略',
-    ],
-    myAnswerIndex: 1,
-    correctAnswerIndex: 3,
-    myAnswer: 'B · 配置 VLAN 接口（SVI）IP',
-    correctAnswer: 'D · 为每条 VLAN 关联 NAT 策略',
-    time: '05-25 10:08',
-    mastered: false,
-    aiExplained: false,
-  },
-  {
-    id: 'w4',
-    subject: '三维建模',
-    topic: 'NURBS 曲面',
-    content: '关于 NURBS 曲面（Non-Uniform Rational B-Splines），下列说法错误的是？',
-    options: [
-      '可以精确表达圆、椭圆等二次曲线',
-      '由控制点、节点向量、权重组成',
-      '阶数越高，曲面越平滑，但计算量也增加',
-      '一定要求控制点矩阵均匀分布',
-    ],
-    myAnswerIndex: 2,
-    correctAnswerIndex: 3,
-    myAnswer: 'C · 阶数越高，曲面越平滑，但计算量也增加',
-    correctAnswer: 'D · 一定要求控制点矩阵均匀分布',
-    time: '05-25 09:18',
-    mastered: true,
-    aiExplained: true,
-  },
-  {
-    id: 'w5',
-    subject: '新能源汽车',
-    topic: 'BMS 均衡',
-    content: '动力电池组 BMS 的"主动均衡"与"被动均衡"相比，最主要的优势是什么？',
-    options: [
-      '电路结构更简单',
-      '通过能量转移减少能量损耗',
-      '不需要任何控制策略',
-      '完全不需要均衡电阻',
-    ],
-    myAnswerIndex: 0,
-    correctAnswerIndex: 1,
-    myAnswer: 'A · 电路结构更简单',
-    correctAnswer: 'B · 通过能量转移减少能量损耗',
-    time: '05-24 16:42',
-    mastered: false,
-    aiExplained: false,
-  },
-  {
-    id: 'w6',
-    subject: '化工原理',
-    topic: '精馏塔板效率',
-    content: '在精馏塔操作中，下列哪一种因素不会显著影响塔板效率？',
-    options: [
-      '回流比',
-      '塔板间距',
-      '蒸汽流速',
-      '塔体高度（与塔板数无关时）',
-    ],
-    myAnswerIndex: 1,
-    correctAnswerIndex: 3,
-    myAnswer: 'B · 塔板间距',
-    correctAnswer: 'D · 塔体高度（与塔板数无关时）',
-    time: '05-24 14:20',
-    mastered: false,
-    aiExplained: false,
-  },
-  {
-    id: 'w7',
-    subject: 'PLC 编程',
-    topic: 'PID 整定',
-    content: 'PID 参数中，积分时间 Ti 越小，对系统响应的影响是？',
-    options: [
-      '积分作用越强，能更快消除稳态误差，但可能产生振荡',
-      '积分作用越弱，稳态误差更大',
-      '完全不影响系统响应速度',
-      '只影响超调量，不影响稳态',
-    ],
-    myAnswerIndex: 1,
-    correctAnswerIndex: 0,
-    myAnswer: 'B · 积分作用越弱，稳态误差更大',
-    correctAnswer: 'A · 积分作用越强，能更快消除稳态误差，但可能产生振荡',
-    time: '05-23 15:08',
-    mastered: false,
-    aiExplained: false,
-  },
-  {
-    id: 'w8',
-    subject: '网络配置',
-    topic: 'OSPF 协议',
-    content: 'OSPF 协议中，区域 0（Area 0）的作用是？',
-    myAnswer: '负责区域之间的快速选路',
-    correctAnswer: '骨干区域，所有非 0 区域都必须直接或通过虚链路连接到 Area 0，用于跨区域路由汇总和转发',
-    time: '05-22 19:30',
-    mastered: false,
-    aiExplained: false,
-  },
-])
+// 视图列表 / 统计 / 加载状态
+const wrongList = ref<WrongQuestion[]>([])
+const statsState = reactive<WrongStats>({ total: 0, mastered: 0, unmastered: 0, subjects: [] })
+const loading = ref(false)
+const loadError = ref('')
+
+/** 本会话内被 AI 讲解过的题目 id（后端不返回该状态，前端本地维护） */
+const aiExplainedIds = reactive(new Set<string>())
+
+function markAiExplained(q: WrongQuestion) {
+  aiExplainedIds.add(q.id)
+  q.aiExplained = true
+}
+
+function formatTime(iso: string): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+/** 后端错题 → 视图模型（推断选项高亮索引、拼装展示文本） */
+function toView(w: ApiWrongQuestion): WrongQuestion {
+  const opts = Array.isArray(w.options) && w.options.length ? w.options : undefined
+  let myAnswerIndex: number | undefined
+  let correctAnswerIndex: number | undefined
+  let myAnswerText = w.wrongAnswer || ''
+  let correctAnswerText = w.correctAnswer || ''
+
+  if (opts) {
+    const ci = opts.findIndex(o => o.key === w.correctAnswer)
+    const mi = opts.findIndex(o => o.key === w.wrongAnswer)
+    if (ci >= 0) { correctAnswerIndex = ci; correctAnswerText = `${opts[ci].key} · ${opts[ci].content}` }
+    if (mi >= 0) { myAnswerIndex = mi; myAnswerText = `${opts[mi].key} · ${opts[mi].content}` }
+  }
+
+  return {
+    id: w.id,
+    subject: w.subject || '',
+    topic: (w.knowledgePoints && w.knowledgePoints.length)
+      ? w.knowledgePoints.join('、')
+      : (w.questionType || ''),
+    content: w.questionContent || '',
+    options: opts ? opts.map(o => o.content) : undefined,
+    myAnswerIndex,
+    correctAnswerIndex,
+    myAnswer: myAnswerText,
+    correctAnswer: correctAnswerText,
+    time: formatTime(w.createdAt),
+    mastered: !!w.mastered,
+    aiExplained: aiExplainedIds.has(w.id),
+  }
+}
+
+function normalizeStats(s: any): WrongStats {
+  return {
+    total: Number(s?.total) || 0,
+    mastered: Number(s?.mastered) || 0,
+    unmastered: Number(s?.unmastered) || 0,
+    subjects: Array.isArray(s?.subjects)
+      ? s.subjects.map((x: any) => ({ subject: String(x?.subject ?? ''), count: Number(x?.count) || 0 }))
+      : [],
+  }
+}
 
 /* ============ Tab / 筛选 ============ */
 type TabKey = 'all' | 'unmastered' | 'mastered' | string
 const currentTab = ref<TabKey>('unmastered')
 
-const subjects = computed(() => Array.from(new Set(wrongList.map(q => q.subject))))
-
 const tabs = computed(() => {
   const baseTabs = [
-    { key: 'unmastered', label: '待复习', count: wrongList.filter(q => !q.mastered).length },
-    { key: 'mastered',   label: '已掌握', count: wrongList.filter(q => q.mastered).length },
-    { key: 'all',        label: '全部',   count: wrongList.length },
+    { key: 'unmastered', label: '待复习', count: statsState.unmastered },
+    { key: 'mastered',   label: '已掌握', count: statsState.mastered },
+    { key: 'all',        label: '全部',   count: statsState.total },
   ]
-  const subjectTabs = subjects.value.map(s => ({
-    key: `subject:${s}`,
-    label: s,
-    count: wrongList.filter(q => q.subject === s).length,
+  const subjectTabs = statsState.subjects.map(s => ({
+    key: `subject:${s.subject}`,
+    label: s.subject,
+    count: s.count,
   }))
   return [...baseTabs, ...subjectTabs]
 })
 
-const filteredList = computed(() => {
-  if (currentTab.value === 'all') return wrongList
-  if (currentTab.value === 'mastered') return wrongList.filter(q => q.mastered)
-  if (currentTab.value === 'unmastered') return wrongList.filter(q => !q.mastered)
-  if (currentTab.value.startsWith('subject:')) {
-    const s = currentTab.value.slice('subject:'.length)
-    return wrongList.filter(q => q.subject === s)
-  }
-  return wrongList
-})
+// 列表由服务端按 currentTab 过滤后返回，此处直接透传
+const filteredList = computed(() => wrongList.value)
 
 /* ============ 统计 ============ */
-const wrongCount        = computed(() => wrongList.filter(q => !q.mastered).length)
-const masteredCount     = computed(() => wrongList.filter(q => q.mastered).length)
-const aiExplainedCount  = computed(() => wrongList.filter(q => q.aiExplained).length)
+const wrongCount        = computed(() => statsState.unmastered)
+const masteredCount     = computed(() => statsState.mastered)
+const aiExplainedCount  = computed(() => aiExplainedIds.size)
+
+/* ============ 数据加载 ============ */
+function tabToQuery(tab: string): { subject?: string; mastered?: boolean } {
+  if (tab === 'mastered') return { mastered: true }
+  if (tab === 'unmastered') return { mastered: false }
+  if (tab.startsWith('subject:')) return { subject: tab.slice('subject:'.length) }
+  return {}
+}
+
+function buildWrongBookUrl(q: { subject?: string; mastered?: boolean }): string {
+  const params: string[] = [`studentId=${encodeURIComponent(studentStore.studentId)}`]
+  if (q.subject) params.push(`subject=${encodeURIComponent(q.subject)}`)
+  if (typeof q.mastered === 'boolean') params.push(`mastered=${q.mastered}`)
+  return `${API_BASE}/wrong-book?${params.join('&')}`
+}
+
+function loadWrongBook(q: { subject?: string; mastered?: boolean } = tabToQuery(currentTab.value)) {
+  loading.value = true
+  loadError.value = ''
+  uni.request({
+    url: buildWrongBookUrl(q),
+    method: 'GET',
+    timeout: 15_000,
+    success: res => {
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        loadError.value = `加载失败（${res.statusCode}）`
+        return
+      }
+      const body: any = res.data
+      const data = body?.data ?? body
+      if (!data || !Array.isArray(data.items)) {
+        loadError.value = '数据格式异常'
+        return
+      }
+      wrongList.value = (data.items as ApiWrongQuestion[]).map(toView)
+      if (data.stats) Object.assign(statsState, normalizeStats(data.stats))
+    },
+    fail: err => {
+      loadError.value = err?.errMsg || '网络异常，请稍后再试'
+    },
+    complete: () => {
+      loading.value = false
+    },
+  })
+}
+
+watch(currentTab, tab => loadWrongBook(tabToQuery(tab)))
+
+/* ============ 标记掌握（乐观更新 + 失败回滚） ============ */
+function adjustStats(from: boolean, to: boolean) {
+  if (from === to) return
+  if (to) {
+    statsState.mastered += 1
+    statsState.unmastered = Math.max(0, statsState.unmastered - 1)
+  } else {
+    statsState.mastered = Math.max(0, statsState.mastered - 1)
+    statsState.unmastered += 1
+  }
+}
+
+function setMastered(q: WrongQuestion, mastered: boolean) {
+  const prev = q.mastered
+  if (prev !== mastered) {
+    q.mastered = mastered
+    adjustStats(prev, mastered)
+  }
+  uni.showToast({
+    title: mastered ? '已掌握' : '重新复习',
+    icon: mastered ? 'success' : 'none',
+    duration: 1000,
+  })
+
+  const rollback = () => {
+    if (q.mastered !== prev) {
+      q.mastered = prev
+      adjustStats(mastered, prev)
+    }
+    uni.showToast({ title: '保存失败，请重试', icon: 'none', duration: 1500 })
+  }
+
+  uni.request({
+    url: `${API_BASE}/wrong-book/${q.id}/mastered`,
+    method: 'POST',
+    data: { mastered },
+    timeout: 15_000,
+    success: res => {
+      const body: any = res.data
+      const ok = res.statusCode >= 200 && res.statusCode < 300 && body?.success !== false
+      if (!ok) rollback()
+    },
+    fail: () => rollback(),
+  })
+}
+
+function toggleMastered(q: WrongQuestion) {
+  setMastered(q, !q.mastered)
+}
 
 /* ============ 选项状态 ============ */
 function optionState(q: WrongQuestion, idx: number): 'mine' | 'correct' | 'normal' {
@@ -508,20 +566,10 @@ function retryExplain() {
 
 function confirmMastered() {
   if (current.value) {
-    current.value.mastered = true
-    current.value.aiExplained = true
-    uni.showToast({ title: '已标记为已掌握', icon: 'success', duration: 1200 })
+    markAiExplained(current.value)
+    setMastered(current.value, true)
     setTimeout(closeExplain, 600)
   }
-}
-
-function toggleMastered(q: WrongQuestion) {
-  q.mastered = !q.mastered
-  uni.showToast({
-    title: q.mastered ? '已掌握' : '重新复习',
-    icon: q.mastered ? 'success' : 'none',
-    duration: 1000,
-  })
 }
 
 let typewriterTimer: ReturnType<typeof setTimeout> | null = null
@@ -541,7 +589,7 @@ function typewriterPush(full: string) {
     if (pos >= full.length) {
       explainStatus.value = 'done'
       typewriterTimer = null
-      if (current.value) current.value.aiExplained = true
+      if (current.value) markAiExplained(current.value)
       return
     }
     pos = Math.min(full.length, pos + chunkSize)
@@ -600,7 +648,7 @@ function goBack() {
 }
 
 onMounted(() => {
-  // 默认 tab 已设为 unmastered
+  loadWrongBook(tabToQuery(currentTab.value))
 })
 </script>
 
@@ -975,6 +1023,24 @@ onMounted(() => {
   color: var(--color-text-primary);
 }
 .empty-desc {
+  font-size: var(--font-body);
+  color: var(--color-text-secondary);
+}
+
+.empty-icon.error {
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.state-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-9) var(--space-4);
+  text-align: center;
+}
+.state-text {
   font-size: var(--font-body);
   color: var(--color-text-secondary);
 }

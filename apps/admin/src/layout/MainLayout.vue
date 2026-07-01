@@ -3,7 +3,7 @@
     <el-aside :width="isCollapsed ? '64px' : '232px'" class="layout-aside">
       <div class="logo-area" :class="{ 'is-collapsed': isCollapsed }">
         <span class="logo-mark" aria-hidden="true">
-          <img src="/logo.png" alt="三元课堂" style="width: 100%; height: 100%; object-fit: contain;" />
+          <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: 100%; display: block;"><rect width="32" height="32" rx="7" fill="#2563eb"/><text x="16" y="23" font-size="20" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-weight="bold">三</text></svg>
         </span>
         <span v-show="!isCollapsed" class="logo-text">
           <span class="logo-name">三元课堂</span>

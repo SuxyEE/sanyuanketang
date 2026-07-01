@@ -8,6 +8,7 @@ import { UserModule } from './modules/user/user.module'
 import { CourseModule } from './modules/course/course.module'
 import { LessonModule } from './modules/lesson/lesson.module'
 import { TaskModule } from './modules/task/task.module'
+import { WrongBookModule } from './modules/wrong-book/wrong-book.module'
 import { AuthModule } from './modules/auth/auth.module'
 import { QrModule } from './modules/qr/qr.module'
 import { CoursewareUploadModule } from './modules/courseware-upload/courseware-upload.module'
@@ -16,7 +17,7 @@ import { CoursewareUploadModule } from './modules/courseware-upload/courseware-u
 const configModule = ConfigModule.forRoot({ isGlobal: true, envFilePath: ['apps/server/.env', '.env'] })
 const dbEnabled = DatabaseModule.isEnabled()
 const ormModules = dbEnabled
-  ? [DatabaseModule.forRoot(), UserModule, CourseModule, LessonModule, TaskModule, AuthModule]
+  ? [DatabaseModule.forRoot(), UserModule, CourseModule, LessonModule, TaskModule, WrongBookModule, AuthModule]
   : []
 
 @Module({

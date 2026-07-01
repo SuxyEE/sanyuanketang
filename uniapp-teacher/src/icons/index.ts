@@ -59,15 +59,17 @@ export type IconName =
   | 'sparkle-dot'
   | 'rocket'
   | 'party-popper'
+  | 'copy'
+  | 'pen-tool'
+  | 'trash-2'
 
 const wrap = (body: string): string =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`
 
 export const icons: Record<IconName, string> = {
-  // 三元课堂自有 logo（三个同心圆 + 中央书本，传达"教学/课堂/三元"概念）
-  logo: wrap(
-    '<circle cx="12" cy="12" r="9.5" stroke-opacity="0.25"/><circle cx="12" cy="12" r="6.5" stroke-opacity="0.55"/><path d="M9 10v5l3-1.4 3 1.4v-5"/><path d="M9 10c0-.55.45-1 1-1h4c.55 0 1 .45 1 1"/>',
-  ),
+  // 三元课堂自有 logo（蓝底白「三」字圆角方标，与四端 favicon 一致）
+  logo:
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="5.5" fill="#2563eb"/><text x="12" y="17.4" text-anchor="middle" font-family="sans-serif" font-size="15" font-weight="bold" fill="#ffffff">三</text></svg>',
 
   'graduation-cap': wrap(
     '<path d="M22 10v6"/><path d="M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c0 1 3 3 6 3s6-2 6-3v-5"/>',
@@ -228,5 +230,17 @@ export const icons: Record<IconName, string> = {
   // 庆祝（课后页）
   'party-popper': wrap(
     '<path d="M5.8 11.3 2 22l10.7-3.79"/><path d="M4 3h.01"/><path d="M22 8h.01"/><path d="M15 2h.01"/><path d="M22 20h.01"/><path d="m22 2-2.24.75a2.9 2.9 0 0 0-1.96 3.12c.1.86-.57 1.63-1.45 1.63h-.38c-.86 0-1.6.6-1.76 1.44L14 10"/><path d="m22 13-1.5-.75c-.87-.45-1.94-.08-2.31.79l-.27.65c-.36.85-1.45 1.06-2.07.4l-.74-.79c-.62-.66-1.71-.45-2.06.41l-.36.86c-.4.95-1.72 1.06-2.27.18l-1.6-2.55"/><path d="M16.4 16.4 21 21"/>',
+  ),
+
+  copy: wrap(
+    '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+  ),
+
+  'pen-tool': wrap(
+    '<path d="m12 19 7-7 3 3-7 7-3-3z"/><path d="m18 13-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="m2 2 7.586 7.586"/><circle cx="11" cy="11" r="2"/>',
+  ),
+
+  'trash-2': wrap(
+    '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>',
   ),
 }

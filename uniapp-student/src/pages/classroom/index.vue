@@ -136,6 +136,75 @@
       </view>
     </Overlay>
 
+    <!-- ===== 我的测验成绩（测验结束后展示本人得分/正误/AI点评） ===== -->
+    <Overlay
+      v-if="myQuizResult"
+      align="center"
+      :z-index="750"
+      max-width="760rpx"
+      @close="myQuizResult = null"
+    >
+      <view class="myresult-card">
+        <view class="myresult-head">
+          <view class="myresult-score" :class="scoreToneClass(myQuizResult.totalScore)">
+            <text class="myresult-score-num">
+              {{ myQuizResult.totalScore >= 0 ? myQuizResult.totalScore : '—' }}
+            </text>
+            <text class="myresult-score-unit">分</text>
+          </view>
+          <view class="myresult-head-text">
+            <text class="myresult-title">{{ myQuizResult.title }}</text>
+            <text class="myresult-sub">
+              答对 {{ myQuizResult.correctCount }} / {{ myQuizResult.totalCount }} 题
+            </text>
+          </view>
+          <IconButton icon="x" size="sm" aria-label="关闭成绩" @tap="myQuizResult = null" />
+        </view>
+
+        <scroll-view scroll-y class="myresult-list">
+          <view
+            v-for="item in myQuizResult.items"
+            :key="item.index"
+            class="myresult-item"
+            :class="{ wrong: !item.correct }"
+          >
+            <view class="mi-top">
+              <view class="mi-badge" :class="item.correct ? 'ok' : 'no'">
+                <Icon :name="item.correct ? 'check' : 'x'" size="xs" tone="inverse" />
+              </view>
+              <text class="mi-index">第 {{ item.index }} 题</text>
+              <Tag size="sm" :tone="item.correct ? 'success' : 'danger'">{{ item.typeLabel }}</Tag>
+              <text v-if="item.score >= 0" class="mi-score">{{ item.score }} 分</text>
+            </view>
+
+            <text class="mi-content">{{ item.content }}</text>
+
+            <view class="mi-answer-row">
+              <text class="mi-answer-label">我的答案</text>
+              <text class="mi-answer-val" :class="{ wrong: !item.correct }">{{ item.myAnswer }}</text>
+            </view>
+            <view v-if="!item.correct && item.correctAnswer" class="mi-answer-row">
+              <text class="mi-answer-label">正确答案</text>
+              <text class="mi-answer-val correct">{{ item.correctAnswer }}</text>
+            </view>
+
+            <view v-if="item.comment" class="mi-comment">
+              <Icon name="sparkles" size="xs" tone="secondary" />
+              <text class="mi-comment-text">{{ item.comment }}</text>
+            </view>
+            <view v-if="item.analysis" class="mi-analysis">
+              <text class="mi-analysis-label">解析</text>
+              <text class="mi-analysis-text">{{ item.analysis }}</text>
+            </view>
+          </view>
+        </scroll-view>
+
+        <Button variant="primary" block size="md" icon-left="check" @tap="myQuizResult = null">
+          我知道了
+        </Button>
+      </view>
+    </Overlay>
+
     <!-- ===== 顶部 header ===== -->
     <view class="lesson-header" :style="{ paddingTop: `max(${headerPad}, var(--safe-top))` }">
       <view class="header-left">
@@ -216,9 +285,19 @@
               <Icon name="file-text" size="sm" tone="primary" />
               <text class="quiz-title">随堂测验</text>
             </view>
-            <text class="quiz-progress">
-              {{ store.currentQuestionIndex + 1 }} / {{ store.quizQuestions.length }}
-            </text>
+            <view class="quiz-header-right">
+              <view
+                v-if="quizDeadline > 0"
+                class="quiz-timer"
+                :class="{ urgent: quizTimerUrgent }"
+              >
+                <Icon name="clock" size="xs" :tone="quizTimerUrgent ? 'danger' : 'muted'" />
+                <text class="quiz-timer-text">{{ quizTimerText }}</text>
+              </view>
+              <text class="quiz-progress">
+                {{ store.currentQuestionIndex + 1 }} / {{ store.quizQuestions.length }}
+              </text>
+            </view>
           </view>
 
           <view v-if="store.currentQuestion" class="quiz-body">
@@ -328,7 +407,7 @@
           </button>
           <view v-else class="compete-done">
             <Icon name="check-circle" size="md" tone="success" />
-            <text>已抢答，等待老师宣布结果</text>
+            <text>{{ competeDoneText }}</text>
           </view>
           <view v-if="store.competeResult" class="compete-result">
             <Icon
@@ -524,6 +603,26 @@
       </view>
     </Overlay>
 
+    <Overlay
+      v-if="showReply"
+      align="center"
+      max-width="640rpx"
+      :z-index="720"
+      @close="showReply = false"
+    >
+      <view class="q-card">
+        <view class="q-head">
+          <view class="reply-title">
+            <Tag tone="success" size="sm" icon="message-circle">老师回复</Tag>
+            <text v-if="replyTime" class="reply-time">{{ replyTime }}</text>
+          </view>
+          <IconButton icon="x" size="sm" aria-label="关闭回复" @tap="showReply = false" />
+        </view>
+        <text class="reply-text">{{ replyText }}</text>
+        <Button variant="primary" size="md" block @tap="showReply = false">知道了</Button>
+      </view>
+    </Overlay>
+
     <SignInPopup
       v-if="store.showAttendance && !store.attendanceSigned"
       :mode="store.attendanceMode"
@@ -534,6 +633,14 @@
       @sign="onSignIn"
       @close="store.showAttendance = false"
     />
+
+    <!-- ===== P0 课堂气氛互动包（自包含组件，各自监听 socket 事件） ===== -->
+    <PollPanel />
+    <AnswerWallPanel />
+    <DanmakuLayer />
+    <ReactionBar />
+    <ClassTimer />
+    <PointsBadge />
   </view>
 </template>
 
@@ -550,6 +657,12 @@ import NotesPanel from '@/components/NotesPanel.vue'
 import SignInPopup from '@/components/SignInPopup.vue'
 import AiInteractiveViewer from '@/components/AiInteractiveViewer.vue'
 import AiWhiteboardViewer from '@/components/AiWhiteboardViewer.vue'
+import PollPanel from '@/components/PollPanel.vue'
+import AnswerWallPanel from '@/components/AnswerWallPanel.vue'
+import DanmakuLayer from '@/components/DanmakuLayer.vue'
+import ReactionBar from '@/components/ReactionBar.vue'
+import ClassTimer from '@/components/ClassTimer.vue'
+import PointsBadge from '@/components/PointsBadge.vue'
 import { lockToCurrentApp, unlockApp } from '@/kiosk'
 import { refreshFullscreenOnShow } from '@/composables/useAntiExit'
 import Icon from '@/components/ui/Icon.vue'
@@ -566,7 +679,38 @@ const lessonId = ref('')
 const shortAnswerInput = ref('')
 const submitting = ref(false)
 const hasCompeted = ref(false)
+const competeAck = ref<{ rank?: number; responseTime?: number; duplicate?: boolean } | null>(null)
+const showReply = ref(false)
+const replyText = ref('')
+const replyTime = ref('')
 const aiPracticeTopic = ref('')
+
+/* ===== 测验答题倒计时 ===== */
+const quizDeadline = ref(0) // 截止时间戳(ms)，0 = 无倒计时
+const quizRemainingSec = ref(0) // 剩余秒数（展示用）
+const hasSubmittedQuiz = ref(false) // 本轮测验是否已提交（防止归零重复自动提交）
+let quizTimerId: ReturnType<typeof setInterval> | null = null
+
+/* ===== 我的测验成绩（从 QuizReport.questionStats[].answers[] 按本地 studentId 筛出） ===== */
+interface MyQuizResultItem {
+  index: number
+  content: string
+  typeLabel: string
+  myAnswer: string
+  correctAnswer: string
+  correct: boolean
+  score: number // 单题得分率 0-100，-1 表示无
+  comment: string // AI 点评（主观题）
+  analysis: string // 题目解析
+}
+interface MyQuizResult {
+  title: string
+  totalScore: number // 0-100 加权总分，-1 表示无
+  correctCount: number
+  totalCount: number
+  items: MyQuizResultItem[]
+}
+const myQuizResult = ref<MyQuizResult | null>(null)
 
 const showAiChat = ref(false)
 const showNotes = ref(false)
@@ -839,9 +983,49 @@ function syncShortAnswerInput() {
   }
 }
 
+/* ===== 测验倒计时：启动 / 停止 / 归零处理 ===== */
+const quizTimerText = computed(() => {
+  const s = Math.max(0, quizRemainingSec.value)
+  const m = Math.floor(s / 60)
+  const sec = s % 60
+  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+})
+const quizTimerUrgent = computed(() => quizDeadline.value > 0 && quizRemainingSec.value <= 10)
+
+function stopQuizCountdown() {
+  if (quizTimerId) {
+    clearInterval(quizTimerId)
+    quizTimerId = null
+  }
+  quizDeadline.value = 0
+  quizRemainingSec.value = 0
+}
+
+function startQuizCountdown(seconds: number) {
+  stopQuizCountdown()
+  const secs = Math.floor(Number(seconds) || 0)
+  if (secs <= 0) return // 教师未设时限：不显示倒计时
+  quizDeadline.value = Date.now() + secs * 1000
+  quizRemainingSec.value = secs
+  quizTimerId = setInterval(() => {
+    const remain = Math.round((quizDeadline.value - Date.now()) / 1000)
+    quizRemainingSec.value = remain > 0 ? remain : 0
+    if (remain <= 0) {
+      stopQuizCountdown()
+      onQuizTimeUp()
+    }
+  }, 1000)
+}
+
+function onQuizTimeUp() {
+  if (store.viewState !== 'quiz' || hasSubmittedQuiz.value) return
+  showToast('答题时间到，已自动提交', 'info', 2500)
+  submitQuiz()
+}
+
 function submitQuiz() {
   commitShortAnswer()
-  if (submitting.value) return
+  if (submitting.value || hasSubmittedQuiz.value) return
   submitting.value = true
   const s = getSocket()
   s?.emit(RoomEvent.AnswerSubmit, {
@@ -850,6 +1034,83 @@ function submitQuiz() {
     answers: store.selectedAnswers,
   })
   showToast('已提交，等待老师批阅', 'success')
+}
+
+/* ===== 我的测验成绩：把答案 key 映射成可读文本 ===== */
+function formatQuizAnswer(ans: string, q: any): string {
+  const raw = (ans ?? '').toString().trim()
+  if (!raw) return '（未作答）'
+  if (q?.type === 'short_answer') return raw
+  if (q?.type === 'true_false') {
+    const v = raw.toLowerCase()
+    if (['true', 't', '1', '对', '正确', 'yes', 'a'].includes(v)) return '正确'
+    if (['false', 'f', '0', '错', '错误', 'no', 'b'].includes(v)) return '错误'
+    return raw
+  }
+  const opts: any[] = Array.isArray(q?.options) ? q.options : []
+  if (opts.length === 0) return raw
+  const keys = raw.split(',').map((k: string) => k.trim()).filter(Boolean)
+  return keys
+    .map((k) => {
+      const opt = opts.find((o: any) => o.key === k)
+      return opt ? `${k}. ${opt.content}` : k
+    })
+    .join('；')
+}
+
+/**
+ * 从 QuizReport 中筛出本人的逐题成绩。
+ * - 逐题：questionStats[].answers[] 按本地 studentId 匹配，取 correct/score/comment
+ * - 总分：report.submissions[] 里本人的 score（后端按分值加权归一化的 0-100）
+ * 随机模式下未分到本人的题不会出现在其 answers 里，自动跳过。
+ */
+function buildMyQuizResult(report: any) {
+  const myId = store.studentId
+  const stats: any[] = Array.isArray(report?.questionStats) ? report.questionStats : []
+  const items: MyQuizResultItem[] = []
+  let correctCount = 0
+  stats.forEach((qs) => {
+    const q = qs?.question || {}
+    const mine = Array.isArray(qs?.answers)
+      ? qs.answers.find((a: any) => a && a.studentId === myId)
+      : null
+    if (!mine) return
+    const isShort = q.type === 'short_answer'
+    const correct = mine.correct === true
+    if (correct) correctCount++
+    items.push({
+      index: items.length + 1,
+      content: q.content || '',
+      typeLabel: qTypeLabel(q.type),
+      myAnswer: formatQuizAnswer(mine.answer, q),
+      correctAnswer: isShort ? (q.referenceAnswer || q.answer || '') : formatQuizAnswer(q.answer || '', q),
+      correct,
+      score: typeof mine.score === 'number' ? mine.score : -1,
+      comment: (mine.comment || '').toString(),
+      analysis: (q.analysis || '').toString(),
+    })
+  })
+  if (items.length === 0) {
+    myQuizResult.value = null
+    return
+  }
+  const mySub = Array.isArray(report?.submissions)
+    ? report.submissions.find((s: any) => s && s.studentId === myId)
+    : null
+  myQuizResult.value = {
+    title: report?.title || '随堂测验',
+    totalScore: mySub && typeof mySub.score === 'number' ? mySub.score : -1,
+    correctCount,
+    totalCount: items.length,
+    items,
+  }
+}
+
+function scoreToneClass(score: number): string {
+  if (score < 0) return 'neutral'
+  if (score >= 80) return 'good'
+  if (score >= 60) return 'mid'
+  return 'low'
 }
 
 function toggleHand() {
@@ -876,8 +1137,24 @@ function sendQuestion() {
 
 function grabCompete() {
   const s = getSocket()
+  competeAck.value = null
   s?.emit(RoomEvent.CompeteAnswer)
   hasCompeted.value = true
+}
+
+const competeDoneText = computed(() => {
+  const a = competeAck.value
+  if (!a) return '已抢答，等待老师宣布结果'
+  if (a.duplicate) return '你已抢答过，请等待结果'
+  const rankText = a.rank ? `你是第 ${a.rank} 个抢答` : '抢答成功'
+  return a.responseTime != null ? `${rankText} · ${a.responseTime}ms` : rankText
+})
+
+function formatReplyTime(t?: string) {
+  if (!t) return ''
+  const d = new Date(t)
+  if (isNaN(d.getTime())) return ''
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
 function onSignIn(payload: {
@@ -1009,6 +1286,9 @@ function applyLessonStart(data: { courseName?: string; lessonTitle?: string; res
   store.currentQuestionIndex = 0
   store.selectedAnswers = {}
   store.activeTaskId = ''
+  stopQuizCountdown()
+  hasSubmittedQuiz.value = false
+  myQuizResult.value = null
   store.showAttendance = false
   store.attendanceSigned = false
   store.groupData = null
@@ -1044,6 +1324,8 @@ onMounted(() => {
     if (data.lessonMeta) applyLessonStart({ ...data.lessonMeta, resetState: false })
     if (data.isLocked) store.lockScreen()
     if (data.activeQuiz?.taskId) {
+      hasSubmittedQuiz.value = false
+      myQuizResult.value = null
       if (data.activeQuiz.randomMode) {
         store.activeTaskId = data.activeQuiz.taskId
         store.quizTimeLimit = data.activeQuiz.timeLimit || 300
@@ -1054,6 +1336,11 @@ onMounted(() => {
           timeLimit: data.activeQuiz.timeLimit,
         })
       }
+      // 重连时优先用服务端下发的剩余秒数，否则退回完整时限
+      const remain = typeof data.activeQuiz.remainingTime === 'number'
+        ? data.activeQuiz.remainingTime
+        : (data.activeQuiz.timeLimit || 0)
+      startQuizCountdown(remain)
     }
     if (data.aiPractice?.topic) {
       aiPracticeTopic.value = data.aiPractice.topic
@@ -1088,6 +1375,8 @@ onMounted(() => {
   s.on(RoomEvent.AnnotationUndo, studentAnnoApplyUndo)
 
   s.on(RoomEvent.QuizStart, (task: any) => {
+    hasSubmittedQuiz.value = false
+    myQuizResult.value = null
     if (task.randomMode) {
       store.activeTaskId = task.id || task.taskId || ''
       store.quizTimeLimit = task.timeLimit || 300
@@ -1095,6 +1384,8 @@ onMounted(() => {
       store.setQuiz(task)
     }
     hasCompeted.value = false
+    // 仅当老师显式设置了时限(task.timeLimit)才倒计时；未设则不限时、不自动提交
+    startQuizCountdown(task.timeLimit || 0)
   })
   s.on(RoomEvent.QuizQuestions, (data: any) => {
     if (data.questions && data.questions.length > 0) {
@@ -1106,9 +1397,14 @@ onMounted(() => {
     }
   })
   s.on(RoomEvent.QuizStop, () => {
+    stopQuizCountdown()
     showToast('测验已结束，等待老师批阅', 'info')
   })
-  s.on(RoomEvent.QuizReport, () => store.endQuiz())
+  s.on(RoomEvent.QuizReport, (report: any) => {
+    stopQuizCountdown()
+    buildMyQuizResult(report)
+    store.endQuiz()
+  })
 
   s.on(RoomEvent.ScreenLock, () => {
     store.lockScreen()
@@ -1141,11 +1437,41 @@ onMounted(() => {
     setTimeout(() => { store.showRollCall = false }, 5000)
   })
 
+  // 随机点名转盘定格的最终结果（可选事件）：复用被点名弹窗高亮
+  s.on(RoomEvent.RollCallResult, (data: any) => {
+    if (!data) return
+    store.rolledStudent = { studentId: data.studentId, studentName: data.studentName }
+    store.showRollCall = true
+    setTimeout(() => { store.showRollCall = false }, 5000)
+  })
+
   s.on(RoomEvent.CompeteStart, (data: any) => {
     hasCompeted.value = false
     store.startCompete({ question: data.question, timeLimit: data.timeLimit, startTime: data.startTime || Date.now() })
   })
   s.on(RoomEvent.CompeteStop, (data: any) => store.stopCompete(data))
+
+  // 反馈闭环：抢答即时 ACK（名次 + 响应耗时 / 已抢过）
+  s.on(RoomEvent.CompeteAnswerAck, (data: any) => {
+    hasCompeted.value = true
+    if (data?.duplicate) {
+      competeAck.value = { duplicate: true }
+      showToast('你已抢答过啦', 'info')
+      return
+    }
+    competeAck.value = { rank: data?.rank, responseTime: data?.responseTime }
+    const rankText = data?.rank ? `你是第 ${data.rank} 个` : '抢答成功'
+    const msText = typeof data?.responseTime === 'number' ? `（${data.responseTime}ms）` : ''
+    showToast(`${rankText}${msText}`, 'success')
+  })
+
+  // 反馈闭环：教师回复本人提问 → 弹窗展示
+  s.on(RoomEvent.QuestionReply, (data: any) => {
+    if (!data || data.studentId !== store.studentId) return
+    replyText.value = String(data.text || '')
+    replyTime.value = formatReplyTime(data.time)
+    showReply.value = true
+  })
 
   s.on(RoomEvent.AttendanceStart, (data: any) => {
     store.attendanceMode = data.mode || ''
@@ -1227,6 +1553,8 @@ onMounted(() => {
 
   s.on(RoomEvent.LessonEnd, () => {
     showToast('本节课已结束', 'info', 4000)
+    stopQuizCountdown()
+    myQuizResult.value = null
     store.viewState = 'listening'
     store.isHandRaised = false
     store.showAttendance = false
@@ -1239,7 +1567,11 @@ onMounted(() => {
     }, 1500)
   })
 
-  s.on('quiz:submit:ack', () => { submitting.value = false })
+  s.on('quiz:submit:ack', (data: any) => {
+    submitting.value = false
+    if (!data?.duplicate) hasSubmittedQuiz.value = true
+    stopQuizCountdown()
+  })
 
   s.on('connect', () => { store.isOnline = true })
   s.on('disconnect', () => { store.isOnline = false })
@@ -1259,6 +1591,7 @@ onHide(() => { reportFocusLost() })
  */
 onUnmounted(() => {
   uni.hideToast()
+  stopQuizCountdown()
   const s = getSocket()
   if (!s) return
   const cleanupEvents = [
@@ -1283,8 +1616,11 @@ onUnmounted(() => {
     RoomEvent.GroupCreate,
     RoomEvent.GroupDissolve,
     RoomEvent.RollCall,
+    RoomEvent.RollCallResult,
     RoomEvent.CompeteStart,
     RoomEvent.CompeteStop,
+    RoomEvent.CompeteAnswerAck,
+    RoomEvent.QuestionReply,
     RoomEvent.AttendanceStart,
     RoomEvent.AttendanceEnd,
     RoomEvent.HomeworkPublish,
@@ -2154,6 +2490,50 @@ onUnmounted(() => {
   font-variant-numeric: tabular-nums;
 }
 
+.quiz-header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.quiz-timer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-width: 128rpx;
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-surface-variant);
+  border: 2rpx solid var(--color-outline-variant);
+  border-radius: var(--radius-pill);
+  transition: background-color var(--duration-fast) var(--ease-standard),
+              border-color var(--duration-fast) var(--ease-standard);
+
+  &.urgent {
+    background: var(--color-danger-container);
+    border-color: var(--color-danger);
+    animation: quiz-timer-blink 1s ease-in-out infinite;
+  }
+}
+
+.quiz-timer-text {
+  font-size: var(--font-label);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 1rpx;
+  .urgent & { color: var(--color-on-danger-container); }
+}
+
+@keyframes quiz-timer-blink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.5; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quiz-timer.urgent { animation: none; }
+}
+
 .quiz-body { flex: 1; overflow-y: auto; }
 
 .landscape .quiz-grid {
@@ -2487,6 +2867,26 @@ onUnmounted(() => {
   color: var(--color-text-primary);
 }
 
+.reply-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.reply-time {
+  font-size: var(--font-caption);
+  color: var(--color-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.reply-text {
+  font-size: var(--font-body);
+  line-height: var(--line-height-normal);
+  color: var(--color-text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .q-textarea {
   width: 100%;
   min-height: 240rpx;
@@ -2515,5 +2915,186 @@ onUnmounted(() => {
   display: flex;
   gap: var(--space-3);
   margin-top: var(--space-2);
+}
+
+/* ===== 我的测验成绩弹窗 ===== */
+.myresult-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-6);
+  max-height: 88vh;
+  box-sizing: border-box;
+}
+
+.myresult-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.myresult-score {
+  flex-shrink: 0;
+  width: 140rpx;
+  height: 140rpx;
+  border-radius: var(--radius-full);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-surface-variant);
+  border: 6rpx solid var(--color-outline-variant);
+
+  &.good { background: var(--color-success-container); border-color: var(--color-success); }
+  &.mid  { background: var(--color-primary-container); border-color: var(--color-primary); }
+  &.low  { background: var(--color-danger-container);  border-color: var(--color-danger); }
+}
+
+.myresult-score-num {
+  font-size: var(--font-headline);
+  font-weight: var(--font-weight-bold);
+  line-height: 1;
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.myresult-score-unit {
+  font-size: var(--font-caption);
+  color: var(--color-text-secondary);
+  margin-top: 2rpx;
+}
+
+.myresult-head-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.myresult-title {
+  font-size: var(--font-title);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+}
+
+.myresult-sub {
+  font-size: var(--font-body);
+  color: var(--color-text-secondary);
+}
+
+.myresult-list {
+  max-height: 56vh;
+}
+
+.myresult-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  margin-bottom: var(--space-3);
+  background: var(--color-surface);
+  border: 2rpx solid var(--color-outline-variant);
+  border-left: 8rpx solid var(--color-success);
+  border-radius: var(--radius-lg);
+
+  &.wrong { border-left-color: var(--color-danger); }
+}
+
+.mi-top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.mi-badge {
+  width: 40rpx;
+  height: 40rpx;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  &.ok { background: var(--color-success); }
+  &.no { background: var(--color-danger); }
+}
+
+.mi-index {
+  font-size: var(--font-label);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.mi-score {
+  margin-left: auto;
+  font-size: var(--font-label);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.mi-content {
+  font-size: var(--font-body);
+  line-height: var(--line-height-normal);
+  color: var(--color-text-primary);
+}
+
+.mi-answer-row {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+}
+
+.mi-answer-label {
+  flex-shrink: 0;
+  font-size: var(--font-caption);
+  color: var(--color-text-tertiary);
+}
+
+.mi-answer-val {
+  flex: 1;
+  font-size: var(--font-body);
+  color: var(--color-text-primary);
+  line-height: var(--line-height-snug);
+  &.wrong { color: var(--color-danger); }
+  &.correct { color: var(--color-success); font-weight: var(--font-weight-semibold); }
+}
+
+.mi-comment {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--color-secondary-container);
+  border-radius: var(--radius-md);
+}
+
+.mi-comment-text {
+  flex: 1;
+  font-size: var(--font-caption);
+  line-height: var(--line-height-normal);
+  color: var(--color-on-secondary-container);
+}
+
+.mi-analysis {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  background: var(--color-surface-variant);
+  border-radius: var(--radius-md);
+}
+
+.mi-analysis-label {
+  font-size: var(--font-overline);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 1rpx;
+}
+
+.mi-analysis-text {
+  font-size: var(--font-caption);
+  line-height: var(--line-height-normal);
+  color: var(--color-text-secondary);
 }
 </style>

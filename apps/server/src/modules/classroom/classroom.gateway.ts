@@ -7,13 +7,14 @@ import {
   ConnectedSocket,
   MessageBody,
 } from '@nestjs/websockets'
-import { Logger } from '@nestjs/common'
+import { Logger, Optional, Inject } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { JwtService } from '@nestjs/jwt'
 import { Server, Socket } from 'socket.io'
 import { RoomEvent } from '@snyuan/shared'
 import { AiService, type WhiteboardGenResult, type InteractiveGenResult } from '../ai/ai.service'
 import { AccessCodeService } from '../access-code/access-code.service'
+import { WrongBookService, type WrongQuestionInput } from '../wrong-book/wrong-book.service'
 
 interface RoomMember {
   socketId: string
@@ -136,6 +137,54 @@ interface ActiveAttendance {
   autoEndTimer?: ReturnType<typeof setTimeout>
 }
 
+type PollKind = 'choice' | 'text' | 'rating'
+
+/** P0 互动：统一的投票/问卷/词云/评分活动（kind 区分） */
+interface ActivePoll {
+  pollId: string
+  kind: PollKind
+  question: string
+  /** choice 专用：选项文案 */
+  options?: string[]
+  /** choice 专用：最多可选几项（默认 1） */
+  maxSelect?: number
+  /** rating 专用：最高分（默认 5） */
+  max?: number
+  startedAt: number
+  /** 可选限时（秒），到点自动结束 */
+  durationSec?: number
+  /** studentId → 提交值（choice: number[]；text: string；rating: number） */
+  submissions: Map<string, number[] | string | number>
+  autoStopTimer?: ReturnType<typeof setTimeout>
+}
+
+/** P0 互动：课堂计时器/倒计时（late-join 用 startedAt 算剩余） */
+interface ClassTimer {
+  timerId: string
+  durationSec: number
+  label?: string
+  startedAt: number
+}
+
+/** P1 答案上墙 / 作品墙：单条提交 */
+interface WallItem {
+  id: string
+  studentId: string
+  studentName: string
+  text?: string
+  image?: string
+  picked: boolean
+  ts: number
+}
+
+/** P1 答案上墙 / 作品墙：当前墙 */
+interface ActiveWall {
+  wallId: string
+  prompt: string
+  allowImage: boolean
+  items: Map<string, WallItem>
+}
+
 interface AnnotationPoint {
   x: number
   y: number
@@ -172,6 +221,22 @@ interface RoomState {
   activeCompete: ActiveCompete | null
   activeAttendance: ActiveAttendance | null
   aiPractice: { topic: string; prompt?: string; startedAt: string } | null
+  /** P0 互动：当前投票/问卷/词云/评分（内存态） */
+  activePoll: ActivePoll | null
+  /** P0 互动：弹幕是否开启（教师控制） */
+  danmakuEnabled: boolean
+  /** P0 互动：情绪反馈滚动窗口（近 60s），用于实时情绪热度 */
+  reactions: { recent: Array<{ type: string; ts: number }> }
+  /** P0 互动：随机点名已点过的学生（避免短期重复），点满一轮自动清空 */
+  recentlyCalled: Set<string>
+  /** P0 互动：课堂计时器/倒计时（内存态） */
+  timer: ClassTimer | null
+  /** P1 游戏化：学生积分（studentId → {name, points}） */
+  points: Map<string, { name: string; points: number }>
+  /** P1 游戏化：小组归属（studentId → {groupId, groupName}），用于小组 PK 聚合 */
+  studentGroups: Map<string, { groupId: string; groupName: string }>
+  /** P1 答案上墙 / 作品墙（内存态） */
+  activeWall: ActiveWall | null
   /**
    * 每页的"已完成"笔画集合，按 slideIndex 索引；翻页或学生中途加入需要全量回放。
    * 上传新课件 / 结课会清空。
@@ -336,6 +401,11 @@ const ADMIN_OBSERVED_EVENTS = new Set<string>([
   RoomEvent.AnnotationStrokeEnd,
   RoomEvent.AnnotationClear,
   RoomEvent.AnnotationUndo,
+  RoomEvent.PollStart,
+  RoomEvent.PollStop,
+  RoomEvent.RollCallResult,
+  RoomEvent.TimerStart,
+  RoomEvent.TimerStop,
 ])
 
 @WebSocketGateway({
@@ -360,6 +430,11 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
   /** 房间空置宽限期：成员归零后多久才真正销毁房间（毫秒） */
   private static readonly ROOM_GRACE_MS = 90_000
 
+  /** P0 互动：合法的情绪反馈类型 */
+  private static readonly REACTION_TYPES = new Set(['got', 'confused', 'tooFast', 'like', 'applause'])
+  /** P0 互动：情绪热度聚合窗口（毫秒） */
+  private static readonly REACTION_WINDOW_MS = 60_000
+
   /** WS 鉴权策略：required = 必须 JWT，optional = 有 JWT 就用，off = 完全不校验（默认，向后兼容） */
   private readonly wsAuthMode: 'required' | 'optional' | 'off'
 
@@ -368,6 +443,8 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly accessCode: AccessCodeService,
+    // 错题本服务：仅 DB 启用时存在（WrongBookModule @Global）；内存模式下为 undefined，落库钩子自动跳过
+    @Optional() @Inject(WrongBookService) private readonly wrongBook?: WrongBookService,
   ) {
     const raw = (this.config.get<string>('WS_AUTH_MODE', 'off') || 'off').toLowerCase()
     this.wsAuthMode = raw === 'required' || raw === 'optional' ? raw : 'off'
@@ -722,6 +799,14 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
         activeCompete: null,
         activeAttendance: null,
         aiPractice: null,
+        activePoll: null,
+        danmakuEnabled: false,
+        reactions: { recent: [] },
+        recentlyCalled: new Set(),
+        timer: null,
+        points: new Map(),
+        studentGroups: new Map(),
+        activeWall: null,
         annotations: new Map(),
         activeStrokes: new Map(),
         reportData: createEmptyReportData(),
@@ -851,6 +936,31 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       activeCompete: activeCompeteSnapshot,
       activeAttendance: activeAttendanceSnapshot,
       aiPractice: room.aiPractice,
+      activePoll: room.activePoll
+        ? {
+            pollId: room.activePoll.pollId,
+            kind: room.activePoll.kind,
+            question: room.activePoll.question,
+            options: room.activePoll.options,
+            maxSelect: room.activePoll.maxSelect,
+            max: room.activePoll.max,
+            startedAt: room.activePoll.startedAt,
+            durationSec: room.activePoll.durationSec,
+            total: room.activePoll.submissions.size,
+            hasSubmitted: data.role === 'student' ? room.activePoll.submissions.has(data.userId) : false,
+          }
+        : null,
+      classTimer: room.timer,
+      danmakuEnabled: room.danmakuEnabled,
+      leaderboard: this.buildLeaderboard(room),
+      activeWall: room.activeWall
+        ? {
+            wallId: room.activeWall.wallId,
+            prompt: room.activeWall.prompt,
+            allowImage: room.activeWall.allowImage,
+            items: Array.from(room.activeWall.items.values()),
+          }
+        : null,
       lessonMeta: room.lessonMeta,
       // 把整本课件的标注一次性发回，前端按当前页过滤展示
       annotations: this.serializeAnnotations(room),
@@ -858,6 +968,29 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
 
     if (room.slides.length > 0) {
       client.emit('slides:loaded', { slides: room.slides, total: room.slides.length })
+    }
+
+    // P0 互动：late-join 同步——用与实时相同的事件补发给刚加入的 socket，
+    // 前端复用同一 handler，无需读 room:joined 里的快照字段。
+    if (room.activePoll) {
+      client.emit(RoomEvent.PollStart, {
+        pollId: room.activePoll.pollId,
+        kind: room.activePoll.kind,
+        question: room.activePoll.question,
+        options: room.activePoll.options,
+        maxSelect: room.activePoll.maxSelect,
+        max: room.activePoll.max,
+        startedAt: room.activePoll.startedAt,
+        durationSec: room.activePoll.durationSec,
+      })
+      const { total, stats } = this.computePollStats(room.activePoll)
+      client.emit(RoomEvent.PollUpdate, { pollId: room.activePoll.pollId, kind: room.activePoll.kind, total, stats })
+    }
+    if (room.danmakuEnabled) {
+      client.emit(RoomEvent.DanmakuToggle, { enabled: true })
+    }
+    if (room.timer) {
+      client.emit(RoomEvent.TimerSync, room.timer)
     }
 
     if (
@@ -1265,6 +1398,64 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       submission.score = totalPoints > 0 ? Math.round((totalEarned / totalPoints) * 100) : 0
     }
 
+    // P1 错题本：把本次测验每个学生的错题落库（DB 开启时；wrongBook 为 undefined 时静默跳过）
+    if (this.wrongBook) {
+      const subject = currentRoom.lessonMeta?.courseName
+      const wrongEntries: WrongQuestionInput[] = []
+      for (const submission of quiz.submissions.values()) {
+        const assignedIds = quiz.randomMode && quiz.studentQuestionMap
+          ? new Set(quiz.studentQuestionMap.get(submission.studentId))
+          : null
+        const gradedQuestions = assignedIds
+          ? quiz.questions.filter(q => assignedIds.has(q.id))
+          : quiz.questions
+        for (const q of gradedQuestions) {
+          const pq = submission.perQuestion?.[q.id]
+          if (!pq || pq.correct !== false) continue
+          wrongEntries.push({
+            studentId: submission.studentId,
+            studentName: submission.studentName,
+            lessonId: room.lessonId,
+            taskId: quiz.taskId,
+            questionId: q.id,
+            subject,
+            questionContent: q.content,
+            questionType: q.type,
+            options: q.options,
+            correctAnswer: q.answer || q.referenceAnswer,
+            analysis: q.analysis,
+            wrongAnswer: submission.answers[q.id] || '',
+            knowledgePoints: q.knowledgePoints,
+            score: pq.score,
+          })
+        }
+      }
+      if (wrongEntries.length > 0) {
+        this.wrongBook
+          .recordWrongQuestions(wrongEntries)
+          .then(() => this.logger.log(`错题本已归集 ${wrongEntries.length} 条（quiz ${quiz.taskId}）`))
+          .catch(err => this.logger.error(`错题本归集失败: ${err}`))
+      }
+    }
+
+    // P1 游戏化：按答对题数给分（每题 +10），广播积分与排行榜
+    for (const submission of quiz.submissions.values()) {
+      let correctCount = 0
+      const assignedIds = quiz.randomMode && quiz.studentQuestionMap
+        ? new Set(quiz.studentQuestionMap.get(submission.studentId))
+        : null
+      const gq = assignedIds ? quiz.questions.filter(q => assignedIds.has(q.id)) : quiz.questions
+      for (const q of gq) {
+        if (submission.perQuestion?.[q.id]?.correct) correctCount++
+      }
+      if (correctCount > 0) {
+        const delta = correctCount * 10
+        const total = this.addPoints(currentRoom, submission.studentId, submission.studentName, delta)
+        this.emitToRoom(roomId, RoomEvent.PointsAward, { studentId: submission.studentId, delta, reason: '答题得分', total })
+      }
+    }
+    this.emitToRoom(roomId, RoomEvent.LeaderboardUpdate, this.buildLeaderboard(currentRoom))
+
     const report = this.buildQuizReport(currentRoom, quiz)
     this.emitToRoom(roomId, 'quiz:report', report)
     this.logger.log(`Quiz report sent: ${quiz.title}, ${quiz.submissions.size} submissions`)
@@ -1509,7 +1700,16 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       startedAt: Date.now(),
     })
 
+    // P1 游戏化：登记小组归属，供小组 PK 聚合
+    room.studentGroups.clear()
+    for (const g of groups) {
+      for (const m of g.members) {
+        room.studentGroups.set(m.id, { groupId: g.id, groupName: g.name })
+      }
+    }
+
     this.emitToRoom(roomId, 'group:create', groups)
+    this.emitToRoom(roomId, RoomEvent.LeaderboardUpdate, this.buildLeaderboard(room))
     this.logger.log(`Groups created: ${data.groupCount}`)
   }
 
@@ -1517,7 +1717,9 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
   handleGroupDissolve(@ConnectedSocket() client: Socket) {
     const ctx = this.getTeacher(client)
     if (!ctx) return
+    ctx.room.studentGroups.clear()
     this.emitToRoom(ctx.roomId, 'group:dissolve')
+    this.emitToRoom(ctx.roomId, RoomEvent.LeaderboardUpdate, this.buildLeaderboard(ctx.room))
   }
 
   @SubscribeMessage('group:msg')
@@ -1542,18 +1744,410 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
     if (!ctx) return
     const { roomId, room } = ctx
 
-    let selected: RoomMember | undefined
     const students = Array.from(room.members.values()).filter(m => m.role === 'student')
+    if (students.length === 0) return
 
-    if (data.mode === 'random' && students.length > 0) {
-      selected = students[Math.floor(Math.random() * students.length)]
+    let selected: RoomMember | undefined
+    if (data.mode === 'random') {
+      // 不重复：优先从"未点过"的学生里抽；点满一轮后清空重来
+      let pool = students.filter(m => !room.recentlyCalled.has(m.userId))
+      if (pool.length === 0) {
+        room.recentlyCalled.clear()
+        pool = students
+      }
+      selected = pool[Math.floor(Math.random() * pool.length)]
+      if (selected) {
+        room.recentlyCalled.add(selected.userId)
+        // 转盘动画需要候选名单 + 命中目标
+        this.emitToRoom(roomId, RoomEvent.RollCallResult, {
+          studentId: selected.userId,
+          studentName: selected.userName,
+          candidates: students.map(m => ({ id: m.userId, name: m.userName })),
+        })
+      }
     } else if (data.studentId) {
       selected = students.find(m => m.userId === data.studentId)
     }
 
     if (selected) {
-      this.emitToRoom(roomId, 'roll:call', { studentId: selected.userId, studentName: selected.userName })
+      this.emitToRoom(roomId, 'roll:call', { studentId: selected.userId, studentName: selected.userName, mode: data.mode })
     }
+  }
+
+  // ==================== P1 游戏化：积分 / 排行榜 / 小组 PK ====================
+
+  /** 仅更新内存积分表，返回该生最新总分 */
+  private addPoints(room: RoomState, studentId: string, name: string, delta: number): number {
+    if (!studentId || !delta) return room.points.get(studentId)?.points || 0
+    const cur = room.points.get(studentId) || { name: name || studentId, points: 0 }
+    cur.points += delta
+    if (name) cur.name = name
+    room.points.set(studentId, cur)
+    return cur.points
+  }
+
+  /** 构建排行榜快照（个人 Top20 + 小组 PK 聚合） */
+  private buildLeaderboard(room: RoomState) {
+    const entries = Array.from(room.points.entries())
+      .map(([studentId, v]) => ({ studentId, name: v.name, points: v.points }))
+      .sort((a, b) => b.points - a.points)
+    const top = entries.slice(0, 20).map((e, i) => ({ ...e, rank: i + 1 }))
+    const groupMap = new Map<string, { groupId: string; groupName: string; points: number; memberCount: number }>()
+    for (const [studentId, g] of room.studentGroups.entries()) {
+      const pts = room.points.get(studentId)?.points || 0
+      const gg = groupMap.get(g.groupId) || { groupId: g.groupId, groupName: g.groupName, points: 0, memberCount: 0 }
+      gg.points += pts
+      gg.memberCount += 1
+      groupMap.set(g.groupId, gg)
+    }
+    const groups = Array.from(groupMap.values())
+      .sort((a, b) => b.points - a.points)
+      .map((g, i) => ({ ...g, rank: i + 1 }))
+    return { top, groups, totalStudents: room.points.size }
+  }
+
+  /** 加分 + 广播积分变动 + 广播最新排行榜（单次加分场景用） */
+  private awardAndBroadcast(roomId: string, studentId: string, name: string, delta: number, reason: string) {
+    const room = this.rooms.get(roomId)
+    if (!room || !studentId || !delta) return
+    const total = this.addPoints(room, studentId, name, delta)
+    this.emitToRoom(roomId, RoomEvent.PointsAward, { studentId, delta, reason, total })
+    this.emitToRoom(roomId, RoomEvent.LeaderboardUpdate, this.buildLeaderboard(room))
+  }
+
+  // ==================== P0 课堂气氛互动包 ====================
+
+  /** 按 kind 计算投票/评分/词云的实时统计 */
+  private computePollStats(poll: ActivePoll): { total: number; stats: any } {
+    const total = poll.submissions.size
+    if (poll.kind === 'choice') {
+      const counts = new Array((poll.options || []).length).fill(0)
+      for (const v of poll.submissions.values()) {
+        const ids = Array.isArray(v) ? v : [Number(v)]
+        for (const i of ids) {
+          if (Number.isInteger(i) && i >= 0 && i < counts.length) counts[i] += 1
+        }
+      }
+      return { total, stats: { counts } }
+    }
+    if (poll.kind === 'rating') {
+      const maxScore = poll.max || 5
+      const distribution = new Array(maxScore).fill(0)
+      let sum = 0
+      let n = 0
+      for (const v of poll.submissions.values()) {
+        const score = Math.round(Number(v))
+        if (score >= 1 && score <= maxScore) {
+          distribution[score - 1] += 1
+          sum += score
+          n += 1
+        }
+      }
+      return { total, stats: { avg: n > 0 ? +(sum / n).toFixed(2) : 0, distribution } }
+    }
+    // text → 词云：按归一化文本聚合词频
+    const freq = new Map<string, number>()
+    for (const v of poll.submissions.values()) {
+      const text = String(v).trim().slice(0, 30)
+      if (!text) continue
+      const key = text.toLowerCase()
+      freq.set(key, (freq.get(key) || 0) + 1)
+    }
+    const words = Array.from(freq.entries())
+      .map(([text, weight]) => ({ text, weight }))
+      .sort((a, b) => b.weight - a.weight)
+      .slice(0, 100)
+    return { total, stats: { words } }
+  }
+
+  @SubscribeMessage('poll:start')
+  handlePollStart(@ConnectedSocket() client: Socket, @MessageBody() data: {
+    kind: PollKind
+    question: string
+    options?: string[]
+    maxSelect?: number
+    max?: number
+    durationSec?: number
+  }) {
+    const ctx = this.getTeacher(client)
+    if (!ctx) return
+    const { roomId, room } = ctx
+    const kind: PollKind = data?.kind === 'text' || data?.kind === 'rating' ? data.kind : 'choice'
+    const question = String(data?.question || '').trim().slice(0, 200)
+    const options = kind === 'choice'
+      ? (Array.isArray(data?.options) ? data.options.map(o => String(o).slice(0, 100)).filter(Boolean).slice(0, 10) : [])
+      : undefined
+    if (kind === 'choice' && (!options || options.length < 2)) {
+      client.emit('error:input', { message: '投票至少需要 2 个选项' })
+      return
+    }
+    if (room.activePoll?.autoStopTimer) clearTimeout(room.activePoll.autoStopTimer)
+    const pollId = `poll-${Date.now()}`
+    const poll: ActivePoll = {
+      pollId,
+      kind,
+      question,
+      options,
+      maxSelect: kind === 'choice' ? Math.max(1, Math.min(options!.length, Number(data?.maxSelect) || 1)) : undefined,
+      max: kind === 'rating' ? Math.max(2, Math.min(10, Number(data?.max) || 5)) : undefined,
+      startedAt: Date.now(),
+      durationSec: data?.durationSec && data.durationSec > 0 ? Math.min(3600, Math.floor(data.durationSec)) : undefined,
+      submissions: new Map(),
+    }
+    room.activePoll = poll
+    this.emitToRoom(roomId, RoomEvent.PollStart, {
+      pollId,
+      kind,
+      question,
+      options,
+      maxSelect: poll.maxSelect,
+      max: poll.max,
+      startedAt: poll.startedAt,
+      durationSec: poll.durationSec,
+    })
+    if (poll.durationSec) {
+      poll.autoStopTimer = setTimeout(() => this.stopPoll(roomId, pollId), poll.durationSec * 1000)
+    }
+    this.logger.log(`Poll started (${kind}) in ${roomId}: ${question}`)
+  }
+
+  @SubscribeMessage('poll:submit')
+  handlePollSubmit(@ConnectedSocket() client: Socket, @MessageBody() data: { pollId: string; value: number[] | string | number }) {
+    const roomId = this.socketToRoom.get(client.id)
+    if (!roomId) return
+    const room = this.rooms.get(roomId)
+    const member = room?.members.get(client.id)
+    if (!room || !member || member.role !== 'student') return
+    const poll = room.activePoll
+    if (!poll || poll.pollId !== data?.pollId) {
+      client.emit(RoomEvent.PollSubmitAck, { pollId: data?.pollId, error: '投票已结束或不存在' })
+      return
+    }
+    if (poll.submissions.has(member.userId)) {
+      client.emit(RoomEvent.PollSubmitAck, { pollId: poll.pollId, duplicate: true })
+      return
+    }
+    let value: number[] | string | number
+    if (poll.kind === 'choice') {
+      const arr = Array.isArray(data.value) ? data.value : [Number(data.value)]
+      const picked = arr
+        .map(Number)
+        .filter(n => Number.isInteger(n) && n >= 0 && n < (poll.options?.length || 0))
+        .slice(0, poll.maxSelect || 1)
+      if (picked.length === 0) {
+        client.emit(RoomEvent.PollSubmitAck, { pollId: poll.pollId, error: '无效选项' })
+        return
+      }
+      value = picked
+    } else if (poll.kind === 'rating') {
+      const score = Math.round(Number(data.value))
+      if (!(score >= 1 && score <= (poll.max || 5))) {
+        client.emit(RoomEvent.PollSubmitAck, { pollId: poll.pollId, error: '无效评分' })
+        return
+      }
+      value = score
+    } else {
+      const text = String(data.value ?? '').trim().slice(0, 30)
+      if (!text) {
+        client.emit(RoomEvent.PollSubmitAck, { pollId: poll.pollId, error: '内容为空' })
+        return
+      }
+      value = text
+    }
+    poll.submissions.set(member.userId, value)
+    client.emit(RoomEvent.PollSubmitAck, { pollId: poll.pollId, ok: true })
+    const { total, stats } = this.computePollStats(poll)
+    this.emitToRoom(roomId, RoomEvent.PollUpdate, { pollId: poll.pollId, kind: poll.kind, total, stats })
+  }
+
+  @SubscribeMessage('poll:stop')
+  handlePollStop(@ConnectedSocket() client: Socket, @MessageBody() data: { pollId?: string }) {
+    const ctx = this.getTeacher(client)
+    if (!ctx) return
+    this.stopPoll(ctx.roomId, data?.pollId)
+  }
+
+  private stopPoll(roomId: string, pollId?: string) {
+    const room = this.rooms.get(roomId)
+    if (!room || !room.activePoll) return
+    if (pollId && room.activePoll.pollId !== pollId) return
+    const poll = room.activePoll
+    if (poll.autoStopTimer) clearTimeout(poll.autoStopTimer)
+    const { total, stats } = this.computePollStats(poll)
+    room.activePoll = null
+    this.emitToRoom(roomId, RoomEvent.PollStop, { pollId: poll.pollId, kind: poll.kind, total, finalStats: stats })
+    this.logger.log(`Poll stopped in ${roomId}: ${poll.pollId}`)
+  }
+
+  @SubscribeMessage('danmaku:toggle')
+  handleDanmakuToggle(@ConnectedSocket() client: Socket, @MessageBody() data: { enabled?: boolean }) {
+    const ctx = this.getTeacher(client)
+    if (!ctx) return
+    ctx.room.danmakuEnabled = data?.enabled !== false
+    this.emitToRoom(ctx.roomId, RoomEvent.DanmakuToggle, { enabled: ctx.room.danmakuEnabled })
+    this.logger.log(`Danmaku ${ctx.room.danmakuEnabled ? 'ON' : 'OFF'} in ${ctx.roomId}`)
+  }
+
+  @SubscribeMessage('danmaku:send')
+  handleDanmakuSend(@ConnectedSocket() client: Socket, @MessageBody() data: { text: string; color?: string }) {
+    const roomId = this.socketToRoom.get(client.id)
+    if (!roomId) return
+    const room = this.rooms.get(roomId)
+    const member = room?.members.get(client.id)
+    if (!room || !member) return
+    if (!room.danmakuEnabled) return
+    const text = String(data?.text || '').trim().slice(0, 50)
+    if (!text) return
+    this.emitToRoom(roomId, RoomEvent.DanmakuPush, {
+      id: `dm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      text,
+      studentId: member.userId,
+      studentName: member.userName,
+      color: typeof data?.color === 'string' ? data.color.slice(0, 16) : undefined,
+    })
+  }
+
+  @SubscribeMessage('danmaku:clear')
+  handleDanmakuClear(@ConnectedSocket() client: Socket) {
+    const ctx = this.getTeacher(client)
+    if (!ctx) return
+    this.emitToRoom(ctx.roomId, RoomEvent.DanmakuClear, {})
+  }
+
+  @SubscribeMessage('reaction:send')
+  handleReactionSend(@ConnectedSocket() client: Socket, @MessageBody() data: { type: string }) {
+    const roomId = this.socketToRoom.get(client.id)
+    if (!roomId) return
+    const room = this.rooms.get(roomId)
+    const member = room?.members.get(client.id)
+    if (!room || !member) return
+    const type = String(data?.type || '')
+    if (!ClassroomGateway.REACTION_TYPES.has(type)) return
+    const now = Date.now()
+    room.reactions.recent.push({ type, ts: now })
+    // 飘 emoji（全房间）
+    this.emitToRoom(roomId, RoomEvent.ReactionPush, { type, studentId: member.userId })
+    // 情绪热度：近 60s 窗口聚合
+    const cutoff = now - ClassroomGateway.REACTION_WINDOW_MS
+    room.reactions.recent = room.reactions.recent.filter(r => r.ts >= cutoff)
+    const counts: Record<string, number> = { got: 0, confused: 0, tooFast: 0, like: 0, applause: 0 }
+    for (const r of room.reactions.recent) counts[r.type] = (counts[r.type] || 0) + 1
+    this.emitToRoom(roomId, RoomEvent.ReactionStats, { counts, windowSec: 60 })
+  }
+
+  @SubscribeMessage('timer:start')
+  handleTimerStart(@ConnectedSocket() client: Socket, @MessageBody() data: { durationSec: number; label?: string }) {
+    const ctx = this.getTeacher(client)
+    if (!ctx) return
+    const durationSec = Math.max(1, Math.min(7200, Math.floor(Number(data?.durationSec) || 0)))
+    if (!durationSec) {
+      client.emit('error:input', { message: '请设置有效的倒计时时长' })
+      return
+    }
+    const timer: ClassTimer = {
+      timerId: `timer-${Date.now()}`,
+      durationSec,
+      label: String(data?.label || '').trim().slice(0, 40) || undefined,
+      startedAt: Date.now(),
+    }
+    ctx.room.timer = timer
+    this.emitToRoom(ctx.roomId, RoomEvent.TimerStart, timer)
+    this.logger.log(`Timer started ${durationSec}s in ${ctx.roomId}`)
+  }
+
+  @SubscribeMessage('timer:stop')
+  handleTimerStop(@ConnectedSocket() client: Socket, @MessageBody() data: { timerId?: string }) {
+    const ctx = this.getTeacher(client)
+    if (!ctx) return
+    if (!ctx.room.timer) return
+    if (data?.timerId && ctx.room.timer.timerId !== data.timerId) return
+    const timerId = ctx.room.timer.timerId
+    ctx.room.timer = null
+    this.emitToRoom(ctx.roomId, RoomEvent.TimerStop, { timerId })
+  }
+
+  // ==================== P1 答案上墙 / 作品墙 ====================
+
+  @SubscribeMessage('wall:open')
+  handleWallOpen(@ConnectedSocket() client: Socket, @MessageBody() data: { prompt?: string; allowImage?: boolean }) {
+    const ctx = this.getTeacher(client)
+    if (!ctx) return
+    const wallId = `wall-${Date.now()}`
+    ctx.room.activeWall = {
+      wallId,
+      prompt: String(data?.prompt || '').slice(0, 200),
+      allowImage: data?.allowImage === true,
+      items: new Map(),
+    }
+    this.emitToRoom(ctx.roomId, RoomEvent.WallOpen, {
+      wallId,
+      prompt: ctx.room.activeWall.prompt,
+      allowImage: ctx.room.activeWall.allowImage,
+    })
+    this.logger.log(`Wall opened in ${ctx.roomId}: ${ctx.room.activeWall.prompt}`)
+  }
+
+  @SubscribeMessage('wall:submit')
+  handleWallSubmit(@ConnectedSocket() client: Socket, @MessageBody() data: { wallId: string; text?: string; image?: string }) {
+    const roomId = this.socketToRoom.get(client.id)
+    if (!roomId) return
+    const room = this.rooms.get(roomId)
+    const member = room?.members.get(client.id)
+    if (!room || !member || member.role !== 'student') return
+    const wall = room.activeWall
+    if (!wall || wall.wallId !== data?.wallId) return
+    const text = String(data?.text || '').slice(0, 500)
+    const image = wall.allowImage && typeof data?.image === 'string' ? data.image.slice(0, 2_000_000) : undefined
+    if (!text && !image) return
+    const item: WallItem = {
+      id: `wi-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      studentId: member.userId,
+      studentName: member.userName,
+      text: text || undefined,
+      image,
+      picked: false,
+      ts: Date.now(),
+    }
+    wall.items.set(item.id, item)
+    this.emitToRoom(roomId, RoomEvent.WallItem, { wallId: wall.wallId, item })
+  }
+
+  @SubscribeMessage('wall:pick')
+  handleWallPick(@ConnectedSocket() client: Socket, @MessageBody() data: { wallId: string; id: string; picked?: boolean }) {
+    const ctx = this.getTeacher(client)
+    if (!ctx) return
+    const wall = ctx.room.activeWall
+    if (!wall || wall.wallId !== data?.wallId) return
+    const it = wall.items.get(data?.id)
+    if (!it) return
+    it.picked = data?.picked !== false
+    this.emitToRoom(ctx.roomId, RoomEvent.WallPick, { wallId: wall.wallId, id: it.id, picked: it.picked })
+  }
+
+  @SubscribeMessage('wall:close')
+  handleWallClose(@ConnectedSocket() client: Socket) {
+    const ctx = this.getTeacher(client)
+    if (!ctx) return
+    if (!ctx.room.activeWall) return
+    const wallId = ctx.room.activeWall.wallId
+    ctx.room.activeWall = null
+    this.emitToRoom(ctx.roomId, RoomEvent.WallClose, { wallId })
+  }
+
+  // ==================== P1 反馈闭环：教师回复学生提问 ====================
+
+  @SubscribeMessage('question:reply')
+  handleQuestionReply(@ConnectedSocket() client: Socket, @MessageBody() data: { studentId: string; questionId?: string; text: string }) {
+    const ctx = this.getTeacher(client)
+    if (!ctx) return
+    const text = String(data?.text || '').slice(0, 500)
+    if (!text || !data?.studentId) return
+    this.emitToRoom(ctx.roomId, RoomEvent.QuestionReply, {
+      studentId: data.studentId,
+      questionId: data.questionId,
+      text,
+      time: new Date().toISOString(),
+    })
   }
 
   @SubscribeMessage('question:ask')
@@ -1658,6 +2252,8 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
     }
     att.signed.push(record)
     this.emitToRoom(roomId, 'attendance:signed', record)
+    // P1 游戏化：签到 +5 分
+    this.awardAndBroadcast(roomId, member.userId, member.userName, 5, '签到')
   }
 
   @SubscribeMessage('slides:upload')
@@ -1741,6 +2337,8 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
     }
     compete.responders.push(responder)
     this.emitToRoom(roomId, 'compete:answer', responder)
+    // 反馈闭环：给抢答学生即时 ACK（名次 + 响应耗时）
+    client.emit('compete:answer:ack', { ok: true, rank: responder.rank, responseTime })
     this.logger.log(`Compete answer: ${member.userName} (${responseTime}ms, rank ${responder.rank})`)
   }
 
@@ -1756,6 +2354,10 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       const serverRanking = compete.responders.slice(0, 5)
       if (!winner && serverRanking.length > 0) winner = serverRanking[0]
       if (ranking.length === 0) ranking = serverRanking
+      // P1 游戏化：抢答获胜 +20 分
+      if (winner?.studentId) {
+        this.awardAndBroadcast(ctx.roomId, winner.studentId, winner.studentName, 20, '抢答获胜')
+      }
       // 归档到 reportData，供「AI 课堂分析报告」聚合使用
       ctx.room.reportData.competeHistory.push({
         question: compete.question,
@@ -1790,6 +2392,15 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       room.activeCompete = null
       room.activeAttendance = null
       room.aiPractice = null
+      if (room.activePoll?.autoStopTimer) clearTimeout(room.activePoll.autoStopTimer)
+      room.activePoll = null
+      room.danmakuEnabled = false
+      room.reactions = { recent: [] }
+      room.recentlyCalled.clear()
+      room.timer = null
+      room.points.clear()
+      room.studentGroups.clear()
+      room.activeWall = null
       room.handRaisedStudents.clear()
       room.annotations.clear()
       room.activeStrokes.clear()
@@ -1801,7 +2412,7 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       }
     }
     const payload = {
-      courseName: String(data?.courseName || '').trim() || '智慧课堂',
+      courseName: String(data?.courseName || '').trim() || '三元课堂',
       lessonTitle: String(data?.lessonTitle || '').trim() || '',
       roomCode: String(data?.roomCode || room.lessonId || '').trim(),
       startedAt: data?.startedAt || new Date().toISOString(),
@@ -1823,6 +2434,15 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
     room.activeCompete = null
     room.activeAttendance = null
     room.aiPractice = null
+    if (room.activePoll?.autoStopTimer) clearTimeout(room.activePoll.autoStopTimer)
+    room.activePoll = null
+    room.danmakuEnabled = false
+    room.reactions = { recent: [] }
+    room.recentlyCalled.clear()
+    room.timer = null
+    room.points.clear()
+    room.studentGroups.clear()
+    room.activeWall = null
     room.currentSlide = 1
     room.totalSlides = 0
     room.slides = []

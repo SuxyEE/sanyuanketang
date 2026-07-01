@@ -143,16 +143,7 @@
             </view>
           </view>
 
-          <view v-if="store.questions.length > 0" class="card question-card">
-            <view class="card-head">
-              <text class="card-title">学生提问</text>
-              <text class="count-text">{{ store.questions.length }} 条</text>
-            </view>
-            <view v-for="q in store.questions.slice(0, 4)" :key="q.time" class="question-item">
-              <text class="question-meta">{{ q.studentName }} · P{{ q.slideIndex }}</text>
-              <text class="question-text">{{ q.text }}</text>
-            </view>
-          </view>
+          <QuestionBoard v-if="store.questions.length > 0" />
 
           <view v-if="store.activeCompete" class="card compete-card">
             <text class="card-title">抢答排行</text>
@@ -179,6 +170,10 @@
       <button class="ctrl-btn" hover-class="ctrl-press" @tap="openPanel('rollcall')">
         <Icon name="user" size="md" />
         <text>点名</text>
+      </button>
+      <button class="ctrl-btn" hover-class="ctrl-press" @tap="danmakuOpen = true">
+        <Icon name="message-square" size="md" />
+        <text>弹幕</text>
       </button>
       <button class="ctrl-btn" hover-class="ctrl-press" @tap="openPanel('ai-settings')">
         <Icon name="zap" size="md" />
@@ -428,6 +423,11 @@
 
         <view v-else-if="activePanel === 'quiz'" class="form" :class="{ 'quiz-two-col': quizDraft.length > 0 }">
           <view class="quiz-left">
+            <view class="preset-row">
+              <text class="preset-label">🏭 演示题库</text>
+              <button class="preset-btn" @tap="loadQuizPreset('vfd')">变频调速·10题</button>
+              <button class="preset-btn" @tap="loadQuizPreset('servo')">伺服定位·10题</button>
+            </view>
             <view class="segmented">
               <button :class="{ active: quizMode === 'ai' }" @tap="quizMode = 'ai'">AI 生成</button>
               <button :class="{ active: quizMode === 'manual' }" @tap="quizMode = 'manual'">手动出题</button>
@@ -988,15 +988,35 @@
         </view>
       </view>
     </view>
+    <!-- P0 课堂气氛互动包（自包含组件，socket 收发内聚在各组件内） -->
+    <PollLauncher v-model:open="pollOpen" />
+    <ClassTimer v-model:open="timerOpen" />
+    <RollCallWheel v-model:open="wheelOpen" />
+    <DanmakuControl v-model:open="danmakuOpen" />
+    <ReactionLayer />
+    <AnswerWall v-model:open="wallOpen" />
+    <FocusMonitor />
+    <WrongBookBoard v-model:open="wrongOpen" :lesson-id="store.roomCode" />
+    <LeaderboardBoard v-model:open="leaderboardOpen" />
   </view>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, getCurrentInstance, onMounted, onUnmounted, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import Button from '@/components/ui/Button.vue'
 import Icon from '@/components/ui/Icon.vue'
 import QuestionPreviewList from '@/components/QuestionPreviewList.vue'
+import PollLauncher from '@/components/atmosphere/PollLauncher.vue'
+import ClassTimer from '@/components/atmosphere/ClassTimer.vue'
+import RollCallWheel from '@/components/atmosphere/RollCallWheel.vue'
+import DanmakuControl from '@/components/atmosphere/DanmakuControl.vue'
+import ReactionLayer from '@/components/atmosphere/ReactionLayer.vue'
+import AnswerWall from '@/components/atmosphere/AnswerWall.vue'
+import WrongBookBoard from '@/components/analytics/WrongBookBoard.vue'
+import LeaderboardBoard from '@/components/gamification/LeaderboardBoard.vue'
+import FocusMonitor from '@/components/analytics/FocusMonitor.vue'
+import QuestionBoard from '@/components/analytics/QuestionBoard.vue'
 import { useMarkdown } from '@/composables/useMarkdown'
 
 const { renderMarkdown } = useMarkdown()
@@ -1042,6 +1062,14 @@ const { connected, connect, getSocket, forceDisconnect } = useSocket()
 const lessonId = ref('demo-lesson-001')
 const activeActivity = ref('')
 const activePanel = ref<Panel>('')
+// P0 课堂气氛互动包：各功能弹窗开关（组件自包含 socket 收发，index 仅接线入口）
+const pollOpen = ref(false)
+const timerOpen = ref(false)
+const wheelOpen = ref(false)
+const danmakuOpen = ref(false)
+const wrongOpen = ref(false)
+const leaderboardOpen = ref(false)
+const wallOpen = ref(false)
 const broadcastMessage = ref('')
 const quizTopic = ref('')
 const competeQuestion = ref('')
@@ -1442,7 +1470,7 @@ function closeAnnotationOverlay() {
 }
 
 function measureCanvasAndRedraw() {
-  uni.createSelectorQuery().in((this as any) ?? undefined)
+  uni.createSelectorQuery().in(getCurrentInstance()?.proxy ?? undefined)
     .select('#annotation-canvas')
     .boundingClientRect((rect: any) => {
       const r = rect as { width?: number; height?: number } | null
@@ -1493,6 +1521,12 @@ const activities: { key: string; icon: IconName; label: string; color: string; b
   { key: 'ai-whiteboard', icon: 'notebook', label: 'AI 板书', color: '#7c4dff', bg: '#f5f0ff' },
   { key: 'report', icon: 'bar-chart', label: '分析报告', color: '#eb2f96', bg: '#fff0f6' },
   { key: 'case', icon: 'book-open', label: '案例扩展', color: '#0f8b8d', bg: '#e6fffb' },
+  { key: 'poll', icon: 'bar-chart', label: '投票词云', color: '#2f6bff', bg: '#f0f7ff' },
+  { key: 'timer', icon: 'clock', label: '计时器', color: '#f5a623', bg: '#fff7e0' },
+  { key: 'rollcall-wheel', icon: 'users', label: '随机点名', color: '#e23d3d', bg: '#fdecec' },
+  { key: 'wrongbook', icon: 'alert-circle', label: '错题学情', color: '#eb2f96', bg: '#fff0f6' },
+  { key: 'leaderboard', icon: 'trophy', label: '排行榜', color: '#f5a623', bg: '#fff7e0' },
+  { key: 'wall', icon: 'monitor', label: '答案上墙', color: '#0f8b8d', bg: '#e6fffb' },
 ]
 const questionTypes = [
   { label: '单选', value: 'single_choice' },
@@ -2598,6 +2632,12 @@ function nextSlide() {
 }
 
 function selectActivity(key: string) {
+  if (key === 'poll') { pollOpen.value = true; return }
+  if (key === 'timer') { timerOpen.value = true; return }
+  if (key === 'rollcall-wheel') { wheelOpen.value = true; return }
+  if (key === 'wrongbook') { wrongOpen.value = true; return }
+  if (key === 'leaderboard') { leaderboardOpen.value = true; return }
+  if (key === 'wall') { wallOpen.value = true; return }
   activeActivity.value = activeActivity.value === key ? '' : key
   if (['quiz', 'attendance', 'compete', 'ai', 'discuss', 'paper', 'report', 'ai-whiteboard'].includes(key)) {
     activePanel.value = key as Panel
@@ -2680,6 +2720,52 @@ function addManualQuestion() {
   manualQuestionStem.value = ''
   manualQuestionAnswer.value = ''
   toast('已添加题目', 'success')
+}
+
+/**
+ * 工业控制演示题库（对接 YTMDK-1 实训平台，客户演示专用）
+ * 一键载入到 quizDraft，即可「下发测验」做真·实时互动。
+ */
+const INDUSTRIAL_QUIZ_PRESETS: Record<string, { title: string; questions: any[] }> = {
+  vfd: {
+    title: '传送带变频调速',
+    questions: [
+      { type: 'single_choice', content: 'S7-1215C 属于西门子哪个系列的 PLC？', options: [{ key: 'A', content: 'S7-200' }, { key: 'B', content: 'S7-1200' }, { key: 'C', content: 'S7-1500' }, { key: 'D', content: 'S7-300' }], answer: 'B', analysis: 'CPU 1215C 属于 S7-1200 系列。', knowledgePoints: ['PLC', 'S7-1200'] },
+      { type: 'single_choice', content: '变频器调节电动机转速，本质上是改变电源的什么？', options: [{ key: 'A', content: '电压' }, { key: 'B', content: '电流' }, { key: 'C', content: '频率' }, { key: 'D', content: '相数' }], answer: 'C', analysis: '转速 n≈60f/p，改变频率即可无级调速。', knowledgePoints: ['变频器', '调速原理'] },
+      { type: 'single_choice', content: 'PLC 与 G120C 变频器、KTP700 触摸屏之间采用哪种通信方式？', options: [{ key: 'A', content: 'RS232 串口' }, { key: 'B', content: 'PROFINET 工业以太网' }, { key: 'C', content: '蓝牙' }, { key: 'D', content: 'USB' }], answer: 'B', analysis: 'PROFINET 一网到底，设备挂在同一张工业以太网上。', knowledgePoints: ['PROFINET', '工业通信'] },
+      { type: 'single_choice', content: '组态西门子 PLC 与 HMI 的软件平台是？', options: [{ key: 'A', content: 'TIA Portal 博途' }, { key: 'B', content: 'Keil' }, { key: 'C', content: 'CCS' }, { key: 'D', content: 'Arduino IDE' }], answer: 'A', analysis: 'TIA Portal 一套搞定 STEP7 / WinCC / StartDrive。', knowledgePoints: ['TIA Portal', '组态软件'] },
+      { type: 'single_choice', content: 'G120C 变频器实现传送带低/中/高三档速度切换，属于哪种控制方式？', options: [{ key: 'A', content: 'PID 闭环' }, { key: 'B', content: '多段速' }, { key: 'C', content: '转矩控制' }, { key: 'D', content: '定位控制' }], answer: 'B', analysis: '多段速用位组合选中若干预置转速。', knowledgePoints: ['多段速', '变频器功能'] },
+      { type: 'single_choice', content: '变频器「软启动」的主要作用是？', options: [{ key: 'A', content: '提高最高转速' }, { key: 'B', content: '减小启动冲击电流、平滑加速' }, { key: 'C', content: '增大输出转矩上限' }, { key: 'D', content: '降低电机绝缘要求' }], answer: 'B', analysis: '斜坡加速可减小启动冲击、保护机械与电网。', knowledgePoints: ['软启动', '斜坡时间'] },
+      { type: 'true_false', content: '急停信号的优先级应高于一切启动指令。', answer: '对', analysis: '急停最高优先，任何指令都不得越过它。', knowledgePoints: ['电气安全', '急停'] },
+      { type: 'true_false', content: 'PROFINET 需要给每个设备额外单独布一条控制线才能通信。', answer: '错', analysis: 'PROFINET 一网到底，一根网线组网。', knowledgePoints: ['PROFINET'] },
+      { type: 'true_false', content: 'CPU 1215C 提供 2 路模拟量输入和 2 路模拟量输出。', answer: '对', analysis: 'CPU 1215C 板载 2AI / 2AO。', knowledgePoints: ['S7-1200', 'IO 配置'] },
+      { type: 'short_answer', content: '请简述变频器报 F30001（过流）故障的排查思路。', referenceAnswer: '先断电检查输出电缆与电机是否短路或对地；再看加减速时间是否过短、负载惯量是否过大，适当加长斜坡时间；核对电机参数并做辨识；最后按 ACK 复位。', analysis: '按外部短路→斜坡时间→负载与电机参数逐层排查。', knowledgePoints: ['变频器故障', '过流保护'] },
+    ],
+  },
+  servo: {
+    title: 'V90 伺服定位',
+    questions: [
+      { type: 'single_choice', content: '伺服系统相比变频系统，最核心的能力是？', options: [{ key: 'A', content: '更省电' }, { key: 'B', content: '位置闭环、精确定位' }, { key: 'C', content: '噪音更低' }, { key: 'D', content: '接线更简单' }], answer: 'B', analysis: '伺服是位置闭环，变频是开环调速。', knowledgePoints: ['伺服', '位置闭环'] },
+      { type: 'single_choice', content: 'V90 伺服电机靠什么元件反馈自身位置？', options: [{ key: 'A', content: '电流表' }, { key: 'B', content: '编码器' }, { key: 'C', content: '热继电器' }, { key: 'D', content: '按钮' }], answer: 'B', analysis: '编码器是伺服的「眼睛」，实时反馈转角。', knowledgePoints: ['编码器', '反馈'] },
+      { type: 'single_choice', content: 'S7-1200 做定位控制，在 TIA Portal 里应组态哪种工艺对象？', options: [{ key: 'A', content: 'PID' }, { key: 'B', content: '计数器' }, { key: 'C', content: '定位轴 Positioning Axis' }, { key: 'D', content: '时钟' }], answer: 'C', analysis: '定位轴 TO 把 V90 包装成可下达走位命令的轴对象。', knowledgePoints: ['工艺对象', '定位轴'] },
+      { type: 'single_choice', content: '使用增量编码器的伺服轴，上电后进行绝对定位前必须先做什么？', options: [{ key: 'A', content: '断电重启' }, { key: 'B', content: '回零 Homing' }, { key: 'C', content: '升速' }, { key: 'D', content: '反转' }], answer: 'B', analysis: '增量编码器断电不记忆位置，须先 MC_Home 回零。', knowledgePoints: ['回零', '增量编码器'] },
+      { type: 'single_choice', content: '运动控制指令中，让轴「走到某个绝对坐标」用哪条？', options: [{ key: 'A', content: 'MC_Power' }, { key: 'B', content: 'MC_Home' }, { key: 'C', content: 'MC_MoveAbsolute' }, { key: 'D', content: 'MC_Reset' }], answer: 'C', analysis: '绝对定位=去坐标，相对定位=走增量。', knowledgePoints: ['MC 指令', '绝对定位'] },
+      { type: 'single_choice', content: 'PLC 与 V90 做位置控制，双方的 PROFINET 报文类型应如何设置？', options: [{ key: 'A', content: '任意即可' }, { key: 'B', content: '两端保持一致' }, { key: 'C', content: '越大越好' }, { key: 'D', content: '不需要报文' }], answer: 'B', analysis: '两端报文必须一致，否则通信握手不成功。', knowledgePoints: ['定位报文', '伺服通信'] },
+      { type: 'true_false', content: '变频调速是开环控制，伺服定位是闭环控制。', answer: '对', analysis: '这是二者的本质区别。', knowledgePoints: ['伺服', '变频'] },
+      { type: 'true_false', content: '增量编码器断电后仍能记住绝对位置，无需回零。', answer: '错', analysis: '断电记忆位置的是绝对值编码器。', knowledgePoints: ['编码器', '回零'] },
+      { type: 'true_false', content: '未使能（MC_Power）就可以直接执行 MC_MoveAbsolute 让轴运动。', answer: '错', analysis: '时序是：先使能→再回零→才能定位。', knowledgePoints: ['MC 指令', '时序'] },
+      { type: 'short_answer', content: '请简述执行 MC_MoveAbsolute 后轴不动、PLC 又不报错的排查思路。', referenceAnswer: '按时序四查：①是否已 MC_Power 使能；②增量编码器是否已 MC_Home 回零；③Execute 是否给了上升沿；④是否触发软/硬限位或轴处于报错态。顺序永远是使能→回零→定位。', analysis: '多为未使能或未回零，绝对定位不执行。', knowledgePoints: ['运动控制', '时序排查'] },
+    ],
+  },
+}
+
+function loadQuizPreset(kind: 'vfd' | 'servo') {
+  const preset = INDUSTRIAL_QUIZ_PRESETS[kind]
+  if (!preset) return
+  quizMode.value = 'manual'
+  manualQuizTitle.value = preset.title
+  quizDraft.value = normalizeQuestions(preset.questions)
+  toast(`已载入「${preset.title}」演示题库 ${preset.questions.length} 题`, 'success')
 }
 
 function generateQuiz() {
@@ -3976,6 +4062,31 @@ function stateText(state: StudentInfo['state']) {
   font-size: var(--font-caption);
   color: #2f6bff;
   font-weight: var(--font-weight-semibold);
+}
+
+.preset-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.preset-label {
+  font-size: var(--font-caption);
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.preset-btn {
+  min-height: 60rpx;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  background: #fff7e0;
+  color: #b8860b;
+  font-size: var(--font-caption);
+  font-weight: var(--font-weight-semibold);
+  border: 1px solid #f5d76e;
 }
 
 .segmented {

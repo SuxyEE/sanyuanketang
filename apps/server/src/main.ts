@@ -26,7 +26,7 @@ async function bootstrap() {
   app.setGlobalPrefix('api/v1')
 
   const config = new DocumentBuilder()
-    .setTitle('智慧课堂 API')
+    .setTitle('三元课堂 API')
     .setDescription('集美工业职业学院 · 交互课堂系统后端接口')
     .setVersion('1.0')
     .addBearerAuth()
