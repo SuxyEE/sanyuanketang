@@ -15,6 +15,7 @@ import { RoomEvent } from '@snyuan/shared'
 import { AiService, type WhiteboardGenResult, type InteractiveGenResult } from '../ai/ai.service'
 import { AccessCodeService } from '../access-code/access-code.service'
 import { WrongBookService, type WrongQuestionInput } from '../wrong-book/wrong-book.service'
+import { ClassroomSessionService } from '../classroom-session/classroom-session.service'
 import { LearningRecordService } from '../platform/learning-record.service'
 import { PlatformConfigService } from '../platform/platform-config.service'
 import type { ClassroomPlatformContext } from '../platform/platform.types'
@@ -459,6 +460,8 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
     private readonly learningRecords: LearningRecordService,
     // 错题本服务：仅 DB 启用时存在（WrongBookModule @Global）；内存模式下为 undefined，落库钩子自动跳过
     @Optional() @Inject(WrongBookService) private readonly wrongBook?: WrongBookService,
+    // 同款可选注入：DB 未配置时为 undefined，会话落库自动 no-op
+    @Optional() @Inject(ClassroomSessionService) private readonly sessions?: ClassroomSessionService,
   ) {
     const raw = (this.config.get<string>('WS_AUTH_MODE', 'off') || 'off').toLowerCase()
     this.wsAuthMode = raw === 'required' || raw === 'optional' ? raw : 'off'
@@ -643,6 +646,9 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
         }
         client.leave(roomId)
         this.broadcastMemberUpdate(roomId)
+        if (member?.userId) {
+          this.persistSession(() => this.sessions!.recordLeave(room.lessonId, member.userId))
+        }
         if (member) this.logger.log(`${member.userName}(${member.clientType}) left ${roomId}`)
         if (room.members.size === 0 && (!room.activeQuiz || room.activeQuiz.status === 'completed')) {
           this.scheduleRoomCleanup(roomId)
@@ -760,6 +766,15 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       externalUserId: data.externalUserId,
       phone: data.phone,
     })
+  }
+
+  /**
+   * 会话落库的统一入口：DB 未配置时直接跳过，写库失败只记日志。
+   * 正在上的课不能因为一次写库失败被打断，所以这里刻意不 await、不抛出。
+   */
+  private persistSession(run: () => Promise<unknown>): void {
+    if (!this.sessions) return
+    void run().catch(err => this.logger.warn(`课堂会话落库失败：${err?.message || err}`))
   }
 
   @SubscribeMessage('room:join')
@@ -933,6 +948,19 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
 
     this.socketToRoom.set(client.id, roomId)
     client.join(roomId)
+
+    this.persistSession(() =>
+      this.sessions!.recordJoin(data.lessonId, room.context, {
+        userId: data.userId,
+        userName: data.userName,
+        role: data.role,
+        clientType: data.clientType,
+        tenantId: memberContext.tenantId,
+        schoolId: memberContext.schoolId,
+        classId: memberContext.classId,
+        externalUserId: memberContext.externalUserId,
+      }),
+    )
 
     if (
       data.role === 'student' &&
@@ -2521,6 +2549,14 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
     room.lessonMeta = payload
     room.studentEntryOpen = true
     this.emitToRoom(roomId, 'lesson:start', payload)
+    this.persistSession(() =>
+      this.sessions!.startSession(
+        room.lessonId,
+        room.context,
+        { courseName: payload.courseName, lessonTitle: payload.lessonTitle, startedAt: payload.startedAt },
+        { reset: resetState },
+      ),
+    )
     this.logger.log(`Lesson started in ${roomId}: ${payload.courseName}`)
   }
 
@@ -2582,6 +2618,7 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       this.autoCompleteTimers.delete(roomId)
     }
     this.emitToRoom(roomId, 'lesson:end')
+    this.persistSession(() => this.sessions!.closeSession(room.lessonId, new Date(endedAt)))
     void this.learningRecords
       .recordLessonEnded(room.context, learningSnapshot)
       .then(item => this.logger.log(`Learning record queued: ${item.id} (${item.eventType})`))

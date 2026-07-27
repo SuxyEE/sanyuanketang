@@ -91,7 +91,7 @@
 | 步骤 | 内容 | 风险 | 是否改现有行为 |
 |---|---|---|---|
 | **Step 1** ✅ | outbox 落库 + 定时重试 | 低 | 否，只改 platform 模块，不碰 gateway |
-| **Step 2** | 会话与名单落库：`room:join` / `lesson:start` / `lesson:end` 写 `classroom_session` 与成员表 | 中 | 否，只加写入，读路径仍走内存 |
+| **Step 2** ✅ | 会话与名单落库：`room:join` / `lesson:start` / `lesson:end` 写 `classroom_session` 与成员表 | 中 | 否，只加写入，读路径仍走内存 |
 | **Step 3** | 测验与作答落库：发题写 `tasks` + `classroom_question_snapshot`，提交写 `task_submissions` | 中 | 否，只加写入。做完这步课堂报告就能从库里重算 |
 | **Step 4** | 拆分 gateway 为会话 / 活动 / 提交 / 批改 / 报告五个领域服务，内存态降级为读模型缓存 | 高 | 是，真正的重构 |
 
@@ -135,3 +135,30 @@ Step 1 完全自包含，不碰 gateway，可以立刻开始。
   拿不到就降级为内存 outbox 并打警告。已实测无数据库时服务能正常启动并给出该警告。
 
 未做：`platform_school_config` 表仍然只有 SQL 草案，配置仍从 JSON 文件读，等真要多校动态配置时再说。
+
+### 8.2 Step 2：会话与名单落库（2026-07-27）
+
+新增 `classroom_sessions` 与 `classroom_session_members` 两张表，建表语句在
+`sql/20260727_classroom_session.sql`。
+
+四个写入点，全部挂在网关已有的流程上：
+
+| 时机 | 动作 |
+|---|---|
+| `room:join` | upsert 成员行；没有进行中的会话就先建一个（大屏和教师会在 `lesson:start` 之前就进来）|
+| `lesson:start` | `resetState=true` 时先收尾上一场再开新的，否则同一房间反复开课会把数据混在一起 |
+| `disconnect` | 记 `lastLeftAt` |
+| `lesson:end` | 把还挂在线上的人按结课时间统一收尾，再关闭会话 |
+
+几个刻意的设计选择：
+
+- 成员表以 `(sessionId, userId)` 唯一。断线重连和多端登录只更新同一行并把 `joinCount` 加一，
+  不会产生多条记录——否则到课率会被算高，而 `joinCount > 1` 本身就是「中途掉线过」的信号。
+- 人数峰值只增不减：中途掉线不应该把已经到过课的人抹掉。
+- 网关侧统一走 `persistSession()`，**不 await、不抛出**，写库失败只记日志。
+  正在上的课不能因为一次写库失败被打断，这是「只加写入、不改读」的底线。
+- 服务本身不缓存 `roomId → sessionId`，每次查库。会话级操作频率很低，
+  而无状态能让 Step 4 拆分时少一个包袱。
+
+已实测演示模式（不配 DB）下服务正常启动、写入自动 no-op。
+**带库的写入路径要等发版后才能验证**，本地没有可用的 MySQL 实例。
