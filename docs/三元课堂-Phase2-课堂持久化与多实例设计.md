@@ -92,7 +92,7 @@
 |---|---|---|---|
 | **Step 1** ✅ | outbox 落库 + 定时重试 | 低 | 否，只改 platform 模块，不碰 gateway |
 | **Step 2** ✅ | 会话与名单落库：`room:join` / `lesson:start` / `lesson:end` 写 `classroom_session` 与成员表 | 中 | 否，只加写入，读路径仍走内存 |
-| **Step 3** | 测验与作答落库：发题写 `tasks` + `classroom_question_snapshot`，提交写 `task_submissions` | 中 | 否，只加写入。做完这步课堂报告就能从库里重算 |
+| **Step 3** ✅ | 测验与作答落库：发题写 `tasks`，提交写 `task_submissions` | 中 | 否，只加写入。做完这步课堂报告就能从库里重算 |
 | **Step 4** | 拆分 gateway 为会话 / 活动 / 提交 / 批改 / 报告五个领域服务，内存态降级为读模型缓存 | 高 | 是，真正的重构 |
 
 前三步都是「只加写入、不改读」，可以逐步上线，出问题直接关掉写入回退。
@@ -162,3 +162,26 @@ Step 1 完全自包含，不碰 gateway，可以立刻开始。
 
 已实测演示模式（不配 DB）下服务正常启动、写入自动 no-op。
 **带库的写入路径要等发版后才能验证**，本地没有可用的 MySQL 实例。
+
+### 8.3 Step 3：测验与作答落库（2026-07-27）
+
+**没有新建题目快照表**，与 3.2 的原计划不同。理由：`tasks.questions` 本身就是发题瞬间的
+JSON 副本，题库后续改题不会影响它，不可变快照的语义已经满足；再建一张表只是把同一份
+数据抄两遍。等 Phase 3 真接上题库、需要记 `sourceQuestionId` 与 revision 时，直接往
+question JSON 里加字段即可。
+
+顺带核了一下生产库：`tasks`、`task_submissions`、`lessons` **都是 0 行**，只有
+`wrong_questions` 有 15 条。这从数据侧印证了 1.3 的判断——REST 那套业务表实际上没人在用，
+真正跑的只有网关，而网关唯一的落库路径就是错题本。
+
+改动：
+
+- `tasks` 扩 `sessionId` / `tenantId` / `schoolId`，关联到具体一次开课
+- `task_submissions` 扩 `studentName` / `tenantId` / `schoolId` / `perQuestion`，
+  并补 `(taskId, studentId)` 唯一约束。`perQuestion` 是 7.3 的正确率、区分度、
+  选项分布能重算出来的前提，原表只有一个总分
+- 三个写入点：`quiz:start` 发题、`answer:submit` 提交、`completeQuiz` 批改完成回填最终分数
+- 两处冗余索引顺手去掉了：`(taskId, studentId)` 和 `(sessionId, userId)` 这两个唯一索引
+  已经能覆盖按 `taskId` / `sessionId` 的查询，再单独建索引只是白白增加写入成本
+
+生产库这三张表都是空的，所以加唯一约束不会失败（已核对 `dup_groups = 0`）。

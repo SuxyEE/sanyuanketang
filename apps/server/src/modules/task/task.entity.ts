@@ -5,8 +5,19 @@ export class TaskEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string
 
+  /** 网关房间码或 lessons.id，取决于是谁写的；课堂实时链路写的是房间码 */
   @Column()
   lessonId: string
+
+  /** 关联到具体一次开课（classroom_sessions.id），课堂实时链路才有 */
+  @Column({ nullable: true })
+  sessionId: string
+
+  @Column({ length: 64, nullable: true })
+  tenantId: string
+
+  @Column({ length: 64, nullable: true })
+  schoolId: string
 
   @Column({ type: 'enum', enum: ['quiz', 'discussion', 'practice', 'ai_practice', 'survey', 'homework'] })
   type: string

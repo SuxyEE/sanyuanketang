@@ -1,5 +1,8 @@
 import { Global, Module } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
+import { TaskSubmissionEntity } from '../task/task-submission.entity'
+import { TaskEntity } from '../task/task.entity'
+import { ClassroomQuizService } from './classroom-quiz.service'
 import { ClassroomSessionMemberEntity } from './classroom-session-member.entity'
 import { ClassroomSessionEntity } from './classroom-session.entity'
 import { ClassroomSessionService } from './classroom-session.service'
@@ -11,8 +14,15 @@ import { ClassroomSessionService } from './classroom-session.service'
  */
 @Global()
 @Module({
-  imports: [TypeOrmModule.forFeature([ClassroomSessionEntity, ClassroomSessionMemberEntity])],
-  providers: [ClassroomSessionService],
-  exports: [ClassroomSessionService],
+  imports: [
+    TypeOrmModule.forFeature([
+      ClassroomSessionEntity,
+      ClassroomSessionMemberEntity,
+      TaskEntity,
+      TaskSubmissionEntity,
+    ]),
+  ],
+  providers: [ClassroomSessionService, ClassroomQuizService],
+  exports: [ClassroomSessionService, ClassroomQuizService],
 })
 export class ClassroomSessionModule {}

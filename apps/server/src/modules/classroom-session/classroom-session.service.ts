@@ -128,6 +128,12 @@ export class ClassroomSessionService {
     await this.sessions.update(session.id, { status: 'ended', endedAt })
   }
 
+  /** 供测验落库关联当前这一场；没有进行中的会话就返回 null，调用方自行决定是否继续 */
+  async getOngoingSessionId(roomId: string): Promise<string | null> {
+    const session = await this.findOngoing(roomId)
+    return session?.id ?? null
+  }
+
   private async findOngoing(roomId: string): Promise<ClassroomSessionEntity | null> {
     return this.sessions.findOne({
       where: { roomId, status: 'ongoing' },

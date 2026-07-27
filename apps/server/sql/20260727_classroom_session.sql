@@ -40,7 +40,27 @@ CREATE TABLE IF NOT EXISTS classroom_session_members (
   joinCount int NOT NULL DEFAULT 1 COMMENT '进入次数，大于 1 说明中途掉线过',
   createdAt datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updatedAt datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  -- 断线重连、多端登录都只更新同一行，避免把到课率算高
-  UNIQUE KEY uq_session_member (sessionId, userId),
-  KEY idx_session_member_session (sessionId)
+  -- 断线重连、多端登录都只更新同一行，避免把到课率算高；
+  -- 唯一索引以 sessionId 打头，按会话查名单也走它，不再另建索引
+  UNIQUE KEY uq_session_member (sessionId, userId)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='课堂名单与进出记录';
+
+-- ── Step 3：测验与作答落库 ─────────────────────────────────────────────
+-- tasks / task_submissions 是既有表（生产库当前为空），这里只扩列与补唯一约束。
+-- 不新建题目快照表：tasks.questions 本身就是发题瞬间的 JSON 副本，题库后续改题
+-- 不会影响它，快照语义已经满足。
+
+ALTER TABLE tasks
+  ADD COLUMN sessionId varchar(36) NULL COMMENT '关联 classroom_sessions.id，课堂实时链路才有',
+  ADD COLUMN tenantId varchar(64) NULL,
+  ADD COLUMN schoolId varchar(64) NULL;
+
+ALTER TABLE task_submissions
+  ADD COLUMN studentName varchar(100) NULL,
+  ADD COLUMN tenantId varchar(64) NULL,
+  ADD COLUMN schoolId varchar(64) NULL,
+  ADD COLUMN perQuestion json NULL COMMENT '单题得分明细，正确率与区分度靠它重算',
+  ADD COLUMN updatedAt datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;
+
+-- 断线重连或客户端重发只更新同一行，避免同一学生被算成多次提交
+CREATE UNIQUE INDEX uq_task_submission ON task_submissions (taskId, studentId);

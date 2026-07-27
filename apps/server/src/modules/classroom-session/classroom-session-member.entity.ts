@@ -1,4 +1,4 @@
-import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, Unique, UpdateDateColumn } from 'typeorm'
+import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, Unique, UpdateDateColumn } from 'typeorm'
 
 /**
  * 课堂名单与进出记录。
@@ -7,8 +7,8 @@ import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, Unique
  * 不会因为重复 join 产生多条记录，也就不会把到课率算高。
  */
 @Entity('classroom_session_members')
+// 唯一索引以 sessionId 打头，按会话查名单也走它，不再另建索引
 @Unique('uq_session_member', ['sessionId', 'userId'])
-@Index('idx_session_member_session', ['sessionId'])
 export class ClassroomSessionMemberEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string

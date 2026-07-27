@@ -16,6 +16,7 @@ import { AiService, type WhiteboardGenResult, type InteractiveGenResult } from '
 import { AccessCodeService } from '../access-code/access-code.service'
 import { WrongBookService, type WrongQuestionInput } from '../wrong-book/wrong-book.service'
 import { ClassroomSessionService } from '../classroom-session/classroom-session.service'
+import { ClassroomQuizService } from '../classroom-session/classroom-quiz.service'
 import { LearningRecordService } from '../platform/learning-record.service'
 import { PlatformConfigService } from '../platform/platform-config.service'
 import type { ClassroomPlatformContext } from '../platform/platform.types'
@@ -462,6 +463,7 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
     @Optional() @Inject(WrongBookService) private readonly wrongBook?: WrongBookService,
     // 同款可选注入：DB 未配置时为 undefined，会话落库自动 no-op
     @Optional() @Inject(ClassroomSessionService) private readonly sessions?: ClassroomSessionService,
+    @Optional() @Inject(ClassroomQuizService) private readonly quizStore?: ClassroomQuizService,
   ) {
     const raw = (this.config.get<string>('WS_AUTH_MODE', 'off') || 'off').toLowerCase()
     this.wsAuthMode = raw === 'required' || raw === 'optional' ? raw : 'off'
@@ -772,9 +774,17 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
    * 会话落库的统一入口：DB 未配置时直接跳过，写库失败只记日志。
    * 正在上的课不能因为一次写库失败被打断，所以这里刻意不 await、不抛出。
    */
+  private persistClassroom(store: unknown, run: () => Promise<unknown>): void {
+    if (!store) return
+    void run().catch(err => this.logger.warn(`课堂落库失败：${err?.message || err}`))
+  }
+
   private persistSession(run: () => Promise<unknown>): void {
-    if (!this.sessions) return
-    void run().catch(err => this.logger.warn(`课堂会话落库失败：${err?.message || err}`))
+    this.persistClassroom(this.sessions, run)
+  }
+
+  private persistQuiz(run: () => Promise<unknown>): void {
+    this.persistClassroom(this.quizStore, run)
   }
 
   @SubscribeMessage('room:join')
@@ -1233,6 +1243,14 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       studentQuestionMap: isRandom ? new Map() : undefined,
     }
     room.activeTaskId = taskId
+    this.persistQuiz(() =>
+      this.quizStore!.recordQuizPublished(room.lessonId, room.context, {
+        taskId,
+        title: room.activeQuiz!.title,
+        questions,
+        timeLimit: data.timeLimit,
+      }),
+    )
     if (room.activeCompete?.active) {
       room.activeCompete.active = false
       const stale = room.activeCompete
@@ -1348,6 +1366,15 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
 
       this.gradeObjectiveSubmission(room.activeQuiz, submission)
       room.activeQuiz.submissions.set(submission.studentId, submission)
+      this.persistQuiz(() =>
+        this.quizStore!.recordSubmission(room.context, room.activeQuiz!.taskId, {
+          studentId: submission.studentId,
+          studentName: submission.studentName,
+          answers: submission.answers,
+          score: submission.score,
+          perQuestion: submission.perQuestion,
+        }),
+      )
 
       const expected = room.activeQuiz.expectedStudentIds
       const submittedCount = room.activeQuiz.submissions.size
@@ -1511,6 +1538,21 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       }
       submission.score = totalPoints > 0 ? Math.round((totalEarned / totalPoints) * 100) : 0
     }
+
+    // 批改完成，回填最终分数与单题明细：7.3 的正确率、区分度都要靠 perQuestion 重算
+    this.persistQuiz(() =>
+      this.quizStore!.recordQuizCompleted(
+        currentRoom.context,
+        quiz.taskId,
+        Array.from(quiz.submissions.values()).map(s => ({
+          studentId: s.studentId,
+          studentName: s.studentName,
+          answers: s.answers,
+          score: s.score,
+          perQuestion: s.perQuestion,
+        })),
+      ),
+    )
 
     // P1 错题本：把本次测验每个学生的错题落库（DB 开启时；wrongBook 为 undefined 时静默跳过）
     if (this.wrongBook) {
