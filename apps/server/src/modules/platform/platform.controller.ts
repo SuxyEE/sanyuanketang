@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
 import { InternalPlatformGuard } from './internal-platform.guard'
-import { LearningRecordPayload, LearningRecordService } from './learning-record.service'
+import { LearningRecordInput, LearningRecordService } from './learning-record.service'
 import { PlatformConfigService } from './platform-config.service'
 import { ExtractQuestionsRequest, QuestionBankService } from './question-bank.service'
 
@@ -44,8 +44,8 @@ export class PlatformController {
 
   @Post('learning-records')
   @UseGuards(InternalPlatformGuard)
-  @ApiOperation({ summary: '接收或转发课堂学情事件' })
-  recordLearning(@Body() body: LearningRecordPayload) {
+  @ApiOperation({ summary: '接收或转发课堂学情事件（事件名见 CLASSROOM_EVENTS）' })
+  recordLearning(@Body() body: LearningRecordInput) {
     return this.learningRecords.record(body)
   }
 
