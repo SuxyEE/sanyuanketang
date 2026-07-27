@@ -881,7 +881,8 @@ AI 场景请求 -> 学校策略/内容安全 -> 模型路由 -> 本地或云端�
 
 - 新增 `shuzhou-auth/migrations/00007_classroom_client.sql`，登记 client `shuzhou-classroom`：public + 强制 PKCE，`redirect_uris` 指向课堂**服务端**回调 `https://duoyuan.longdao.top/api/v1/auth/shuzhou/callback`。
 - 采用服务端换码而非浏览器换码：浏览器全程不接触中央 access_token，也不需要把课堂前端 Origin 加进认证中心的 CORS 白名单。
-- `app_code` 暂留空，即不做学校订阅校验；需要按学校控制开通时再填并配 `campus_app` / `campus_school_app`。
+- 按 4.2 打开学校订阅校验：智慧校园 `campus_app` 新增应用 `sanyuan-classroom`（显示名「多元课堂」，符合 22.6 的稳定产品码 + 显示名分离），`00008_classroom_app_code.sql` 把该编码写回 client。未开通的学校在 authorize 阶段就会拿到 `access_denied`。
+- 各学校的 `campus_school_app` 开通关系是环境相关的业务数据（school_id 每个环境都不同），不放进迁移，按环境单独建；应用行缺失会导致该 client 所有登录被拒。
 
 ### 24.2 课堂服务端
 
@@ -904,7 +905,7 @@ AI 场景请求 -> 学校策略/内容安全 -> 模型路由 -> 本地或云端�
 
 ### 24.4 尚未覆盖
 
-- **学校订阅未校验**：`shuzhou-classroom` 的 `app_code` 目前留空，认证中心不查 `campus_app` / `campus_school_app`，等于任何能登录智慧校园的人都能换到课堂令牌并被自动建档。4.2 要求的「校验学校订阅」这一条没做到，需要确定应用编码取值和已开通学校名单后补上。
+- **学校标识不是同一个命名空间**：智慧校园的 `school_id` 是数字（如 25 厦门金林湾实验学校），而课堂 `platform-config.json` 用的是 slug（`jimei-industrial`），两边对不上。后果是校园用户免登进来后 `getSchoolConfig('25')` 匹配不到任何配置，会静默回退到默认学校，于是金林湾的老师看到集美工业学院的品牌和题库。需要在 platform-config 里改用校园数字 ID，或加一层显式映射，并在匹配不到时改为报错而不是静默回退。另外校园库里目前没有集美工业学院这所学校。
 - WebSocket 握手仍是 `WS_AUTH_MODE=off`，没有要求携带短期 access token。
 - 大屏、教师端和学生端仍走邀请码 / kiosk，没有统一身份。
 - 合作方经 partner grant 进入课堂尚未接。
