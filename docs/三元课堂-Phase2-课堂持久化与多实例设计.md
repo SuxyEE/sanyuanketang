@@ -90,7 +90,7 @@
 
 | 步骤 | 内容 | 风险 | 是否改现有行为 |
 |---|---|---|---|
-| **Step 1** | outbox 落库 + 定时重试 | 低 | 否，只改 platform 模块，不碰 gateway |
+| **Step 1** ✅ | outbox 落库 + 定时重试 | 低 | 否，只改 platform 模块，不碰 gateway |
 | **Step 2** | 会话与名单落库：`room:join` / `lesson:start` / `lesson:end` 写 `classroom_session` 与成员表 | 中 | 否，只加写入，读路径仍走内存 |
 | **Step 3** | 测验与作答落库：发题写 `tasks` + `classroom_question_snapshot`，提交写 `task_submissions` | 中 | 否，只加写入。做完这步课堂报告就能从库里重算 |
 | **Step 4** | 拆分 gateway 为会话 / 活动 / 提交 / 批改 / 报告五个领域服务，内存态降级为读模型缓存 | 高 | 是，真正的重构 |
@@ -117,3 +117,21 @@ Step 1 ──→ Step 2 ──→ Step 3 ──→ [回答租户模型问题] �
 ```
 
 Step 1 完全自包含，不碰 gateway，可以立刻开始。
+
+## 8. 落地记录
+
+### 8.1 Step 1：outbox 落库与重试（2026-07-27）
+
+- 新增 `LearningRecordOutboxEntity`，表 `platform_learning_record_outbox`，主键就是信封的
+  `event_id`，下游按它幂等。列名用驼峰，与库内既有风格和 TypeORM 默认命名策略一致；
+  `sql/20260724_platform_foundation.sql` 里的建表语句同步改掉了，否则 `DB_SYNCHRONIZE=true`
+  会再建一套下划线列。
+- 比原草案多一列 `nextAttemptAt`：没有它就没法做退避，失败的事件会在每个轮询周期被反复重打。
+- 写入顺序是**先落库再投递**，投递失败不丢事件，交给重试任务。原来是先推、推失败只在内存里
+  记个 `lastError`，重启就没了。
+- 重试任务每 60 秒捞一批（可配），指数退避封顶 30 分钟，超过最大次数（默认 8）不再自动重试，
+  留在库里等人工排查，不会无限重打下游。
+- `PlatformModule` 在演示模式下也要挂载，所以仓库是条件注册、`@Optional` 注入的：
+  拿不到就降级为内存 outbox 并打警告。已实测无数据库时服务能正常启动并给出该警告。
+
+未做：`platform_school_config` 表仍然只有 SQL 草案，配置仍从 JSON 文件读，等真要多校动态配置时再说。

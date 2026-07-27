@@ -7,6 +7,7 @@ import { LessonEntity } from '../modules/lesson/lesson.entity'
 import { TaskEntity } from '../modules/task/task.entity'
 import { TaskSubmissionEntity } from '../modules/task/task-submission.entity'
 import { WrongQuestionEntity } from '../modules/wrong-book/wrong-question.entity'
+import { LearningRecordOutboxEntity } from '../modules/platform/learning-record-outbox.entity'
 
 /**
  * 条件挂载的 TypeORM 连接：
@@ -37,7 +38,7 @@ export class DatabaseModule {
           inject: [ConfigService],
           useFactory: (cfg: ConfigService) => {
             const url = cfg.get<string>('DATABASE_URL')
-            const baseEntities = [UserEntity, CourseEntity, LessonEntity, TaskEntity, TaskSubmissionEntity, WrongQuestionEntity]
+            const baseEntities = [UserEntity, CourseEntity, LessonEntity, TaskEntity, TaskSubmissionEntity, WrongQuestionEntity, LearningRecordOutboxEntity]
             const synchronize = cfg.get<string>('DB_SYNCHRONIZE', 'false') === 'true'
             const logging = cfg.get<string>('DB_LOGGING', 'false') === 'true'
 

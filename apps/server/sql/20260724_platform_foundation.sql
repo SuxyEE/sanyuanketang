@@ -37,18 +37,21 @@ CREATE TABLE IF NOT EXISTS platform_school_config (
   UNIQUE KEY uk_platform_school_config (tenant_id, school_id, product_code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='学校级产品运行配置';
 
+-- 列名与 LearningRecordOutboxEntity 保持一致（驼峰），否则 DB_SYNCHRONIZE=true 会再建一套
 CREATE TABLE IF NOT EXISTS platform_learning_record_outbox (
-  id varchar(64) PRIMARY KEY,
-  tenant_id varchar(64) NOT NULL,
-  school_id varchar(64) NOT NULL,
-  product_code varchar(64) NOT NULL DEFAULT 'sanyuan-classroom',
-  event_type varchar(64) NOT NULL,
-  occurred_at datetime NOT NULL,
+  id varchar(64) PRIMARY KEY COMMENT '与事件信封的 event_id 同值，下游按它幂等',
+  tenantId varchar(64) NOT NULL,
+  schoolId varchar(64) NOT NULL,
+  productCode varchar(64) NOT NULL DEFAULT 'sanyuan-classroom',
+  eventType varchar(64) NOT NULL,
+  occurredAt datetime NOT NULL,
   status varchar(32) NOT NULL DEFAULT 'queued',
   attempts int NOT NULL DEFAULT 0,
-  last_error varchar(1000) NULL,
-  payload_json json NOT NULL,
-  created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  KEY idx_learning_record_school_status (tenant_id, school_id, status, occurred_at)
+  nextAttemptAt datetime NULL COMMENT '退避后的下次可投递时间，为空表示可立即投递',
+  lastError varchar(1000) NULL,
+  envelope json NOT NULL COMMENT '完整的标准事件信封',
+  createdAt datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updatedAt datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_outbox_dispatch (status, nextAttemptAt),
+  KEY idx_outbox_school (tenantId, schoolId, occurredAt)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='学情回流 outbox';

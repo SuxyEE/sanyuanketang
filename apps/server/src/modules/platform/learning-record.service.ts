@@ -1,6 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger, OnApplicationShutdown, OnModuleInit, Optional } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import { InjectRepository } from '@nestjs/typeorm'
 import { randomUUID } from 'node:crypto'
+import { In, IsNull, LessThan, LessThanOrEqual, Repository } from 'typeorm'
+import { LearningRecordOutboxEntity } from './learning-record-outbox.entity'
 import { PlatformConfigService } from './platform-config.service'
 import { ClassroomPlatformContext } from './platform.types'
 
@@ -23,8 +26,14 @@ export type ClassroomEventType = (typeof CLASSROOM_EVENTS)[keyof typeof CLASSROO
 
 const SCHEMA_VERSION = 1
 const DEFAULT_PRODUCER = 'sanyuan-classroom'
-const OUTBOX_LIMIT = 500
+/** 仅在没有数据库的演示模式下生效：内存 outbox 的条数上限 */
+const MEMORY_OUTBOX_LIMIT = 500
 const PUSH_TIMEOUT_MS = 4000
+const DEFAULT_MAX_ATTEMPTS = 8
+const DEFAULT_RETRY_INTERVAL_MS = 60_000
+const RETRY_BATCH_SIZE = 50
+/** 退避上限 30 分钟，避免长时间故障后堆积的事件在恢复瞬间打爆下游 */
+const MAX_BACKOFF_MS = 30 * 60 * 1000
 
 export interface LearningRecordActor {
   issuer?: string
@@ -84,14 +93,40 @@ export interface LearningRecordOutboxItem {
 }
 
 @Injectable()
-export class LearningRecordService {
+export class LearningRecordService implements OnModuleInit, OnApplicationShutdown {
   private readonly logger = new Logger('LearningRecordService')
-  private readonly outbox: LearningRecordOutboxItem[] = []
+  /** 没配数据库的演示模式下的降级存储，重启即丢；生产走 repo */
+  private readonly memoryOutbox: LearningRecordOutboxItem[] = []
+  private retryTimer: NodeJS.Timeout | null = null
+  private dispatching = false
 
   constructor(
     private readonly platformConfig: PlatformConfigService,
     private readonly config: ConfigService,
+    @Optional()
+    @InjectRepository(LearningRecordOutboxEntity)
+    private readonly repo?: Repository<LearningRecordOutboxEntity>,
   ) {}
+
+  onModuleInit() {
+    if (!this.repo) {
+      this.logger.warn('未配置数据库，学情 outbox 降级为进程内存，重启会丢失')
+      return
+    }
+    if (!this.pushEnabled) return
+
+    const interval = this.readNumber('LEARNING_RECORD_RETRY_INTERVAL_MS', DEFAULT_RETRY_INTERVAL_MS)
+    this.retryTimer = setInterval(() => void this.dispatchPending(), interval)
+    // 不要因为这个定时器把进程钉住不退出
+    this.retryTimer.unref?.()
+    this.logger.log(`学情回流重试任务已启动，间隔 ${interval}ms，最多重试 ${this.maxAttempts} 次`)
+  }
+
+  onApplicationShutdown() {
+    if (!this.retryTimer) return
+    clearInterval(this.retryTimer)
+    this.retryTimer = null
+  }
 
   async record(input: LearningRecordInput): Promise<LearningRecordOutboxItem> {
     const school = this.platformConfig.getSchoolConfig(input.schoolId, input.tenantId)
@@ -131,16 +166,29 @@ export class LearningRecordService {
       envelope,
     }
 
-    this.outbox.unshift(item)
-    if (this.outbox.length > OUTBOX_LIMIT) this.outbox.pop()
-
-    if (
-      school.features.learningRecordSync &&
-      school.learningRecordSink.mode === 'external-api' &&
-      this.config.get<string>('LEARNING_RECORD_PUSH_ENABLED', 'false') === 'true'
-    ) {
-      await this.pushExternal(school, item)
+    if (this.repo) {
+      await this.repo.save(
+        this.repo.create({
+          id: item.id,
+          tenantId: item.tenantId,
+          schoolId: item.schoolId,
+          productCode: envelope.producer,
+          eventType: item.eventType,
+          occurredAt: new Date(item.occurredAt),
+          status: 'queued',
+          attempts: 0,
+          nextAttemptAt: null,
+          lastError: null,
+          envelope,
+        }),
+      )
+    } else {
+      this.memoryOutbox.unshift(item)
+      if (this.memoryOutbox.length > MEMORY_OUTBOX_LIMIT) this.memoryOutbox.pop()
     }
+
+    // 先落库再投递：投递失败也不会丢事件，交给重试任务
+    if (this.shouldPush(school)) await this.deliver(school, item)
 
     return item
   }
@@ -161,18 +209,59 @@ export class LearningRecordService {
     })
   }
 
-  listOutbox(filter: { tenantId?: string; schoolId?: string } = {}) {
-    return this.outbox.filter(item => {
-      if (filter.tenantId && item.tenantId !== filter.tenantId) return false
-      if (filter.schoolId && item.schoolId !== filter.schoolId) return false
-      return true
-    })
+  async listOutbox(filter: { tenantId?: string; schoolId?: string } = {}): Promise<LearningRecordOutboxItem[]> {
+    if (!this.repo) {
+      return this.memoryOutbox.filter(item => {
+        if (filter.tenantId && item.tenantId !== filter.tenantId) return false
+        if (filter.schoolId && item.schoolId !== filter.schoolId) return false
+        return true
+      })
+    }
+
+    const where: Record<string, unknown> = {}
+    if (filter.tenantId) where.tenantId = filter.tenantId
+    if (filter.schoolId) where.schoolId = filter.schoolId
+    const rows = await this.repo.find({ where, order: { occurredAt: 'DESC' }, take: 200 })
+    return rows.map(row => this.toItem(row))
   }
 
-  private async pushExternal(
+  /** 捞出到点可重试的事件重新投递；重试次数用尽的不再捞，留在库里等人工排查 */
+  private async dispatchPending(): Promise<void> {
+    if (!this.repo || this.dispatching || !this.pushEnabled) return
+    this.dispatching = true
+    try {
+      const pending: Array<'queued' | 'failed'> = ['queued', 'failed']
+      const attempts = LessThan(this.maxAttempts)
+      const rows = await this.repo.find({
+        where: [
+          { status: In(pending), attempts, nextAttemptAt: IsNull() },
+          { status: In(pending), attempts, nextAttemptAt: LessThanOrEqual(new Date()) },
+        ],
+        order: { occurredAt: 'ASC' },
+        take: RETRY_BATCH_SIZE,
+      })
+      if (rows.length === 0) return
+
+      let sent = 0
+      for (const row of rows) {
+        const school = this.platformConfig.getSchoolConfig(row.schoolId, row.tenantId)
+        if (!this.shouldPush(school)) continue
+        const item = this.toItem(row)
+        await this.deliver(school, item)
+        if (item.status === 'sent') sent += 1
+      }
+      this.logger.log(`学情回流重试：处理 ${rows.length} 条，成功 ${sent} 条`)
+    } catch (err: any) {
+      this.logger.warn(`学情回流重试任务出错：${err?.message || err}`)
+    } finally {
+      this.dispatching = false
+    }
+  }
+
+  private async deliver(
     school: ReturnType<PlatformConfigService['getSchoolConfig']>,
     item: LearningRecordOutboxItem,
-  ) {
+  ): Promise<void> {
     const endpoint = school.learningRecordSink.endpoint
     if (!endpoint) return
     const tokenEnv = school.learningRecordSink.tokenEnv
@@ -197,12 +286,66 @@ export class LearningRecordService {
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       item.status = 'sent'
       item.lastError = undefined
+      await this.persistStatus(item, null)
     } catch (err: any) {
       item.status = 'failed'
       item.lastError = err?.message || String(err)
-      this.logger.warn(`Learning record push failed: ${item.lastError}`)
+      await this.persistStatus(item, this.nextAttemptAt(item.attempts))
+      const exhausted = item.attempts >= this.maxAttempts
+      const suffix = exhausted ? '，重试次数已用尽，需人工排查' : ''
+      this.logger.warn(`学情回流投递失败 ${item.id}（第 ${item.attempts} 次）：${item.lastError}${suffix}`)
     } finally {
       clearTimeout(timer)
     }
+  }
+
+  private async persistStatus(item: LearningRecordOutboxItem, nextAttemptAt: Date | null): Promise<void> {
+    if (!this.repo) return
+    await this.repo.update(item.id, {
+      status: item.status,
+      attempts: item.attempts,
+      lastError: item.lastError ?? null,
+      nextAttemptAt,
+    })
+  }
+
+  private toItem(row: LearningRecordOutboxEntity): LearningRecordOutboxItem {
+    return {
+      id: row.id,
+      tenantId: row.tenantId,
+      schoolId: row.schoolId,
+      eventType: row.eventType,
+      occurredAt: row.occurredAt instanceof Date ? row.occurredAt.toISOString() : String(row.occurredAt),
+      status: row.status,
+      attempts: row.attempts,
+      lastError: row.lastError ?? undefined,
+      envelope: row.envelope as LearningRecordEnvelope,
+    }
+  }
+
+  private shouldPush(school: ReturnType<PlatformConfigService['getSchoolConfig']>): boolean {
+    return (
+      school.features.learningRecordSync &&
+      school.learningRecordSink.mode === 'external-api' &&
+      this.pushEnabled
+    )
+  }
+
+  /** 指数退避，上限 30 分钟 */
+  private nextAttemptAt(attempts: number): Date {
+    return new Date(Date.now() + Math.min(2 ** attempts * 30_000, MAX_BACKOFF_MS))
+  }
+
+  private get pushEnabled(): boolean {
+    return this.config.get<string>('LEARNING_RECORD_PUSH_ENABLED', 'false') === 'true'
+  }
+
+  private get maxAttempts(): number {
+    return this.readNumber('LEARNING_RECORD_MAX_ATTEMPTS', DEFAULT_MAX_ATTEMPTS)
+  }
+
+  private readNumber(key: string, fallback: number): number {
+    const value = Number(this.config.get<string>(key, String(fallback)))
+    return Number.isFinite(value) && value > 0 ? value : fallback
   }
 }
