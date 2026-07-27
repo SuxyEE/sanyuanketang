@@ -15,6 +15,9 @@ import { RoomEvent } from '@snyuan/shared'
 import { AiService, type WhiteboardGenResult, type InteractiveGenResult } from '../ai/ai.service'
 import { AccessCodeService } from '../access-code/access-code.service'
 import { WrongBookService, type WrongQuestionInput } from '../wrong-book/wrong-book.service'
+import { LearningRecordService } from '../platform/learning-record.service'
+import { PlatformConfigService } from '../platform/platform-config.service'
+import type { ClassroomPlatformContext } from '../platform/platform.types'
 
 interface RoomMember {
   socketId: string
@@ -22,6 +25,14 @@ interface RoomMember {
   userName: string
   role: 'teacher' | 'student' | 'admin'
   clientType: string
+  tenantId: string
+  schoolId: string
+  classId?: string
+  className?: string
+  gradeId?: string
+  subject?: string
+  externalUserId?: string
+  phone?: string
   joinedAt: Date
 }
 
@@ -202,6 +213,7 @@ interface AnnotationStroke {
 
 interface RoomState {
   lessonId: string
+  context: ClassroomPlatformContext
   studentEntryOpen: boolean
   lessonMeta: {
     courseName: string
@@ -443,6 +455,8 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly accessCode: AccessCodeService,
+    private readonly platformConfig: PlatformConfigService,
+    private readonly learningRecords: LearningRecordService,
     // 错题本服务：仅 DB 启用时存在（WrongBookModule @Global）；内存模式下为 undefined，落库钩子自动跳过
     @Optional() @Inject(WrongBookService) private readonly wrongBook?: WrongBookService,
   ) {
@@ -699,9 +713,11 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
   private emitToRoom(roomId: string, event: string, data?: any) {
     this.server.to(roomId).emit(event, data)
     if (ADMIN_OBSERVED_EVENTS.has(event)) {
+      const room = this.rooms.get(roomId)
       this.server.to(ADMIN_OBSERVERS_ROOM).emit('admin:event', {
         roomId,
         lessonId: roomId.startsWith('lesson:') ? roomId.slice('lesson:'.length) : roomId,
+        context: room?.context,
         event,
         data,
         time: new Date().toISOString(),
@@ -724,10 +740,46 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
     this.autoCompleteTimers.set(roomId, t)
   }
 
+  private resolveJoinContext(data: {
+    tenantId?: string
+    schoolId?: string
+    classId?: string
+    className?: string
+    gradeId?: string
+    subject?: string
+    externalUserId?: string
+    phone?: string
+  }): ClassroomPlatformContext {
+    return this.platformConfig.resolveClassroomContext({
+      tenantId: data.tenantId,
+      schoolId: data.schoolId,
+      classId: data.classId,
+      className: data.className,
+      gradeId: data.gradeId,
+      subject: data.subject,
+      externalUserId: data.externalUserId,
+      phone: data.phone,
+    })
+  }
+
   @SubscribeMessage('room:join')
   handleJoin(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { lessonId: string; userId: string; userName: string; role: string; clientType: string },
+    @MessageBody() data: {
+      lessonId: string
+      userId: string
+      userName: string
+      role: string
+      clientType: string
+      tenantId?: string
+      schoolId?: string
+      classId?: string
+      className?: string
+      gradeId?: string
+      subject?: string
+      externalUserId?: string
+      phone?: string
+    },
   ) {
     // 如果 WS 启用 JWT 鉴权（required / optional），用 token payload 覆盖客户端声明的 userId/role，
     // 防止学生改前端代码假装成教师。
@@ -750,6 +802,14 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
     data.userName = String(data.userName || '').trim()
     data.role = String(data.role || '').trim()
     data.clientType = String(data.clientType || '').trim()
+    data.tenantId = String(data.tenantId || '').trim()
+    data.schoolId = String(data.schoolId || '').trim()
+    data.classId = String(data.classId || '').trim()
+    data.className = String(data.className || '').trim()
+    data.gradeId = String(data.gradeId || '').trim()
+    data.subject = String(data.subject || '').trim()
+    data.externalUserId = String(data.externalUserId || '').trim()
+    data.phone = String(data.phone || '').trim()
 
     if (!data.lessonId || !this.isValidRole(data.role) || !this.isValidClientType(data.clientType)) {
       this.rejectJoin(client, 'INVALID_JOIN_PAYLOAD', '加入课堂参数无效')
@@ -767,6 +827,7 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
     const isScreen = this.isScreenJoin(data)
     const isTeacherController = this.isTeacherControllerJoin(data)
     const isStudent = data.role === 'student'
+    const joinContext = this.resolveJoinContext(data)
 
     if (!existingRoom && !isScreen && !isAdminMonitor) {
       this.rejectJoin(client, 'SCREEN_NOT_READY', '请先在大屏展示二维码，并由教师扫码接管')
@@ -786,6 +847,7 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
     if (!this.rooms.has(roomId)) {
       this.rooms.set(roomId, {
         lessonId: data.lessonId,
+        context: joinContext,
         studentEntryOpen: false,
         lessonMeta: null,
         members: new Map(),
@@ -817,6 +879,13 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
     this.cancelRoomCleanup(roomId)
 
     const room = this.rooms.get(roomId)!
+    let memberContext = existingRoom
+      ? this.platformConfig.mergeContext(room.context, data)
+      : joinContext
+    if (isScreen || isTeacherController || isAdminMonitor) {
+      room.context = this.platformConfig.mergeContext(room.context, data)
+      memberContext = room.context
+    }
     if (isTeacherController) {
       room.studentEntryOpen = true
     }
@@ -851,6 +920,14 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       userName: data.userName,
       role: data.role as RoomMember['role'],
       clientType: data.clientType,
+      tenantId: memberContext.tenantId,
+      schoolId: memberContext.schoolId,
+      classId: memberContext.classId,
+      className: memberContext.className,
+      gradeId: memberContext.gradeId,
+      subject: memberContext.subject,
+      externalUserId: memberContext.externalUserId,
+      phone: memberContext.phone,
       joinedAt: new Date(),
     })
 
@@ -872,6 +949,14 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       userName: m.userName,
       role: m.role,
       clientType: m.clientType,
+      tenantId: m.tenantId,
+      schoolId: m.schoolId,
+      classId: m.classId,
+      className: m.className,
+      gradeId: m.gradeId,
+      subject: m.subject,
+      externalUserId: m.externalUserId,
+      phone: m.phone,
       onlineAt: m.joinedAt.toISOString(),
     }))
 
@@ -926,6 +1011,7 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       totalSlides: room.totalSlides,
       isLocked: room.isLocked,
       memberCount: room.members.size,
+      context: room.context,
       members,
       studentCount: members.filter(m => m.role === 'student').length,
       activeTaskId: room.activeTaskId,
@@ -2376,7 +2462,19 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
   @SubscribeMessage('lesson:start')
   handleLessonStart(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { courseName?: string; lessonTitle?: string; roomCode?: string; startedAt?: string; resetState?: boolean } = {},
+    @MessageBody() data: {
+      courseName?: string
+      lessonTitle?: string
+      roomCode?: string
+      startedAt?: string
+      resetState?: boolean
+      tenantId?: string
+      schoolId?: string
+      classId?: string
+      className?: string
+      gradeId?: string
+      subject?: string
+    } = {},
   ) {
     const ctx = this.getTeacher(client)
     if (!ctx) return
@@ -2411,12 +2509,14 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
         this.autoCompleteTimers.delete(roomId)
       }
     }
+    room.context = this.platformConfig.mergeContext(room.context, data)
     const payload = {
-      courseName: String(data?.courseName || '').trim() || '三元课堂',
+      courseName: String(data?.courseName || '').trim() || room.context.productName || '三元课堂',
       lessonTitle: String(data?.lessonTitle || '').trim() || '',
       roomCode: String(data?.roomCode || room.lessonId || '').trim(),
       startedAt: data?.startedAt || new Date().toISOString(),
       resetState,
+      context: room.context,
     }
     room.lessonMeta = payload
     room.studentEntryOpen = true
@@ -2429,6 +2529,30 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
     const ctx = this.getTeacher(client)
     if (!ctx) return
     const { roomId, room } = ctx
+    const endedAt = new Date().toISOString()
+    const learningSnapshot = {
+      lessonId: room.lessonId,
+      lessonMeta: room.lessonMeta,
+      endedAt,
+      currentSlide: room.currentSlide,
+      totalSlides: room.totalSlides,
+      studentCount: Array.from(room.members.values()).filter(m => m.role === 'student').length,
+      memberCount: room.members.size,
+      members: Array.from(room.members.values()).map(m => ({
+        userId: m.userId,
+        userName: m.userName,
+        role: m.role,
+        clientType: m.clientType,
+        tenantId: m.tenantId,
+        schoolId: m.schoolId,
+        classId: m.classId,
+        gradeId: m.gradeId,
+        subject: m.subject,
+        externalUserId: m.externalUserId,
+        phone: m.phone,
+      })),
+      reportData: room.reportData,
+    }
     room.activeQuiz = null
     room.activeTaskId = null
     room.activeCompete = null
@@ -2458,6 +2582,10 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       this.autoCompleteTimers.delete(roomId)
     }
     this.emitToRoom(roomId, 'lesson:end')
+    void this.learningRecords
+      .recordLessonEnded(room.context, learningSnapshot)
+      .then(item => this.logger.log(`Learning record queued: ${item.id} (${item.eventType})`))
+      .catch(err => this.logger.warn(`Learning record queue failed: ${err?.message || err}`))
     this.logger.log(`Lesson ended in ${roomId}`)
   }
 
@@ -3407,6 +3535,12 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
         return {
           roomId,
           lessonId: room.lessonId,
+          context: room.context,
+          schoolId: room.context.schoolId,
+          schoolName: room.context.schoolName,
+          classId: room.context.classId,
+          className: room.context.className,
+          subject: room.context.subject,
           teacherName: teacher?.userName || '',
           memberCount: room.members.size,
           studentCount: Array.from(room.members.values()).filter(m => m.role === 'student').length,
@@ -3428,6 +3562,12 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       .map(([roomId, room]) => ({
         roomId,
         lessonId: room.lessonId,
+        context: room.context,
+        schoolId: room.context.schoolId,
+        schoolName: room.context.schoolName,
+        classId: room.context.classId,
+        className: room.context.className,
+        subject: room.context.subject,
         memberCount: room.members.size,
         studentCount: Array.from(room.members.values()).filter(m => m.role === 'student').length,
         currentSlide: room.currentSlide,
@@ -3447,6 +3587,14 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
           userName: m.userName,
           role: m.role,
           clientType: m.clientType,
+          tenantId: m.tenantId,
+          schoolId: m.schoolId,
+          classId: m.classId,
+          className: m.className,
+          gradeId: m.gradeId,
+          subject: m.subject,
+          externalUserId: m.externalUserId,
+          phone: m.phone,
         })),
       }))
     client.emit('admin:rooms', rooms)
@@ -3466,6 +3614,14 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
       userName: m.userName,
       role: m.role,
       clientType: m.clientType,
+      tenantId: m.tenantId,
+      schoolId: m.schoolId,
+      classId: m.classId,
+      className: m.className,
+      gradeId: m.gradeId,
+      subject: m.subject,
+      externalUserId: m.externalUserId,
+      phone: m.phone,
       onlineAt: m.joinedAt.toISOString(),
     }))
 
@@ -3473,6 +3629,7 @@ export class ClassroomGateway implements OnGatewayConnection, OnGatewayDisconnec
 
     this.emitToRoom(roomId, 'member:update', {
       members,
+      context: room.context,
       onlineCount: members.length,
       studentCount: students.length,
     })

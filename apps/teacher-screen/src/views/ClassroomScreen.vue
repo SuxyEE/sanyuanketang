@@ -294,6 +294,7 @@ import { RoomEvent } from '@snyuan/shared'
 import { useClassroomStore } from '../stores/classroom'
 import { useSocket } from '../composables/useSocket'
 import { WS_URL } from '../shared/backend'
+import { getPlatformJoinContext } from '../shared/platform'
 import AiWhiteboard from '../components/AiWhiteboard.vue'
 import WrongBookScreen from '../components/WrongBookScreen.vue'
 import LeaderboardScreen from '../components/LeaderboardScreen.vue'
@@ -566,6 +567,7 @@ function joinRoom(lessonId: string) {
       userName: '教室大屏',
       role: 'teacher',
       clientType: 'teacher-screen',
+      ...getPlatformJoinContext(),
     })
   }
   const url = new URL(window.location.href)

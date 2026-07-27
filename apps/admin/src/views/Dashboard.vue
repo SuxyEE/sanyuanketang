@@ -12,7 +12,7 @@
           <h1>{{ greeting }}，管理员</h1>
         </div>
         <p class="hero-sub">
-          今日共 <strong>{{ kpi.todayLessons.value }}</strong> 节课、 <strong>{{ totalOnlineDisplay }}</strong> 名师生在线，AI 助教累计被调用 <strong>{{ kpi.aiTotalCalls.value }}</strong> 次。
+          {{ schoolName }} · {{ productName }} 今日共 <strong>{{ kpi.todayLessons.value }}</strong> 节课、 <strong>{{ totalOnlineDisplay }}</strong> 名师生在线，AI 助教累计被调用 <strong>{{ kpi.aiTotalCalls.value }}</strong> 次。
         </p>
       </div>
       <div class="hero-status">
@@ -192,6 +192,7 @@ import {
 } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import { useAdminSocket } from '../composables/useAdminSocket'
+import { usePlatformConfig } from '../composables/usePlatformConfig'
 import {
   activityDistribution,
   aiUsageSeries,
@@ -203,6 +204,7 @@ import {
 import Sparkline from '../components/Sparkline.vue'
 
 const { isConnected, totalOnline, liveEvents, rooms } = useAdminSocket()
+const { schoolName, productName, load: loadPlatformConfig } = usePlatformConfig()
 
 /** ----- 时间 / 问候 ----- */
 const nowTime = ref('')
@@ -385,7 +387,7 @@ const displayedClassrooms = computed(() => {
       id: r.roomId,
       name: r.lessonId || '未命名课堂',
       teacher: r.members.find(m => m.role === 'teacher')?.userName || '教师',
-      className: '-',
+      className: r.className || r.context?.className || r.schoolName || r.context?.schoolName || '-',
       online: r.studentCount,
       total: Math.max(r.studentCount, 1),
       progress: Math.round((r.currentSlide / Math.max(r.totalSlides, 1)) * 100),
@@ -405,6 +407,7 @@ const displayedEvents = computed(() => {
 })
 
 onMounted(() => {
+  void loadPlatformConfig()
   tickNow()
   nowTimer = setInterval(tickNow, 30_000)
   initCharts()

@@ -4,11 +4,13 @@ import { JwtModule } from '@nestjs/jwt'
 import { ClassroomGateway } from './classroom.gateway'
 import { AiModule } from '../ai/ai.module'
 import { AccessCodeModule } from '../access-code/access-code.module'
+import { PlatformModule } from '../platform/platform.module'
 
 @Module({
   imports: [
     AiModule,
     AccessCodeModule,
+    PlatformModule,
     // ClassroomGateway 用 JwtService 校验 socket auth.token；
     // 与 AuthModule 是独立的 JwtModule 实例，但 secret 一致，verify 结果一致。
     JwtModule.registerAsync({

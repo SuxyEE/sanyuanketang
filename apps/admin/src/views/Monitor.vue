@@ -129,7 +129,7 @@ const allClassrooms = computed(() => {
       id: r.roomId,
       name: r.lessonId,
       teacher: r.members.find(m => m.role === 'teacher')?.userName || '教师',
-      class: '-',
+      class: r.className || r.context?.className || r.schoolName || r.context?.schoolName || '-',
       online: r.studentCount,
       total: Math.max(r.studentCount, 1),
       completion: Math.round((r.currentSlide / Math.max(r.totalSlides, 1)) * 100),

@@ -12,6 +12,7 @@ import { WrongBookModule } from './modules/wrong-book/wrong-book.module'
 import { AuthModule } from './modules/auth/auth.module'
 import { QrModule } from './modules/qr/qr.module'
 import { CoursewareUploadModule } from './modules/courseware-upload/courseware-upload.module'
+import { PlatformModule } from './modules/platform/platform.module'
 
 // 业务持久化模块只在 DB 配好时挂载；否则系统继续以内存 Map 运行。
 const configModule = ConfigModule.forRoot({ isGlobal: true, envFilePath: ['apps/server/.env', '.env'] })
@@ -24,6 +25,7 @@ const ormModules = dbEnabled
   imports: [
     configModule,
     ...ormModules,
+    PlatformModule,
     AccessCodeModule,
     QrModule,
     ClassroomModule,

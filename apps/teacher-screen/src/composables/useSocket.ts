@@ -1,6 +1,7 @@
 import { ref, onUnmounted } from 'vue'
 import { io, Socket } from 'socket.io-client'
 import { WS_URL } from '@/shared/backend'
+import { getPlatformJoinContext } from '@/shared/platform'
 
 const sharedSocket = ref<Socket | null>(null)
 const sharedConnected = ref(false)
@@ -20,7 +21,7 @@ export function useSocket() {
     if (sharedSocket.value?.connected) {
       if (wantsJoin) {
         sharedSocket.value.emit('room:join', {
-          lessonId, userId, userName, role: 'teacher', clientType: 'teacher-screen',
+          lessonId, userId, userName, role: 'teacher', clientType: 'teacher-screen', ...getPlatformJoinContext(),
         })
       }
       return sharedSocket.value
@@ -47,6 +48,7 @@ export function useSocket() {
           userName,
           role: 'teacher',
           clientType: 'teacher-screen',
+          ...getPlatformJoinContext(),
         })
       }
     })
@@ -62,6 +64,7 @@ export function useSocket() {
           userName,
           role: 'teacher',
           clientType: 'teacher-screen',
+          ...getPlatformJoinContext(),
         })
       }
     })

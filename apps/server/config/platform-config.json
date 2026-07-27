@@ -1,0 +1,109 @@
+{
+  "version": 1,
+  "defaultTenantId": "longdao",
+  "defaultSchoolId": "jimei-industrial",
+  "schools": [
+    {
+      "tenantId": "longdao",
+      "schoolId": "jimei-industrial",
+      "schoolName": "集美工业学院",
+      "productName": "三元课堂",
+      "branding": {
+        "productName": "三元课堂",
+        "schoolName": "集美工业学院",
+        "logoText": "三",
+        "logoUrl": "",
+        "primaryColor": "#2f54eb",
+        "aiColor": "#722ed1",
+        "backgroundImageUrl": "",
+        "siderBackground": "#0e1b3a"
+      },
+      "features": {
+        "questionBank": true,
+        "learningRecordSync": true,
+        "aiWhiteboard": true,
+        "aiPractice": true,
+        "wrongBook": true,
+        "classroomMonitor": true
+      },
+      "model": {
+        "provider": "openai-compatible",
+        "model": "qwen-plus",
+        "baseUrlEnv": "OPENAI_BASE_URL",
+        "apiKeyEnv": "OPENAI_API_KEY",
+        "temperature": 0.3
+      },
+      "dataSources": [
+        {
+          "id": "school-main",
+          "name": "学校业务库",
+          "type": "mysql",
+          "scope": "school",
+          "readonly": true,
+          "jdbcUrlEnv": "SANYUAN_JIMEI_DB_URL",
+          "credentialRef": "env:SANYUAN_JIMEI_DB_PASSWORD",
+          "remark": "承接智慧校园组织、班级、课表和学情回流；只在服务端使用。"
+        }
+      ],
+      "questionBank": {
+        "mode": "local-fixture",
+        "extractPath": "/api/v1/question-bank/extract",
+        "tokenEnv": "SCHOOL_QUESTION_BANK_TOKEN",
+        "mockQuestions": [
+          {
+            "id": "jimei-plc-001",
+            "type": "single_choice",
+            "content": "在 PLC 梯形图中，常开触点检测到输入信号为 1 时，逻辑状态通常为？",
+            "options": [
+              { "key": "A", "content": "断开" },
+              { "key": "B", "content": "闭合导通" },
+              { "key": "C", "content": "保持上一状态" },
+              { "key": "D", "content": "触发急停" }
+            ],
+            "answer": "B",
+            "analysis": "常开触点在输入信号为 1 时闭合，允许逻辑导通。",
+            "points": 10,
+            "difficulty": "easy",
+            "subject": "PLC 控制技术",
+            "gradeId": "2024",
+            "knowledgePoints": ["梯形图", "触点逻辑"]
+          },
+          {
+            "id": "jimei-plc-002",
+            "type": "multiple_choice",
+            "content": "设计电机启停控制回路时，通常需要考虑哪些保护或互锁？",
+            "options": [
+              { "key": "A", "content": "过载保护" },
+              { "key": "B", "content": "急停回路" },
+              { "key": "C", "content": "正反转互锁" },
+              { "key": "D", "content": "忽略接地" }
+            ],
+            "answer": ["A", "B", "C"],
+            "analysis": "电机控制应考虑过载、急停、互锁等安全条件，不能忽略接地。",
+            "points": 15,
+            "difficulty": "medium",
+            "subject": "PLC 控制技术",
+            "gradeId": "2024",
+            "knowledgePoints": ["电机控制", "安全互锁"]
+          },
+          {
+            "id": "jimei-robot-001",
+            "type": "short_answer",
+            "content": "简述工业机器人基坐标系与工具坐标系的区别，并举一个课堂实训中的使用场景。",
+            "referenceAnswer": "基坐标系描述机器人本体相对空间的位置，工具坐标系描述末端工具姿态；如焊枪、夹爪等末端工具的路径规划会使用工具坐标系。",
+            "points": 20,
+            "difficulty": "medium",
+            "subject": "工业机器人编程实训",
+            "gradeId": "2024",
+            "knowledgePoints": ["机器人坐标系", "路径规划"]
+          }
+        ]
+      },
+      "learningRecordSink": {
+        "mode": "outbox",
+        "endpoint": "",
+        "tokenEnv": "SMART_CAMPUS_INTERNAL_TOKEN"
+      }
+    }
+  ]
+}

@@ -23,6 +23,10 @@ export interface User {
   role: UserRole
   studentNo?: string
   classId?: string
+  tenantId?: string
+  schoolId?: string
+  externalUserId?: string
+  phone?: string
 }
 
 export interface Course {
@@ -182,4 +186,12 @@ export interface JoinRoomPayload {
   lessonId: string
   clientType: ClientType
   deviceType: DeviceType
+  tenantId?: string
+  schoolId?: string
+  classId?: string
+  className?: string
+  gradeId?: string
+  subject?: string
+  externalUserId?: string
+  phone?: string
 }

@@ -1,6 +1,7 @@
 import { ref, onUnmounted } from 'vue'
 import { io, Socket } from 'socket.io-client'
 import { WS_URL } from '@/shared/backend'
+import { getPlatformRuntimeHint, type PlatformRuntimeHint } from '@/api/platform'
 
 let socket: Socket | null = null
 let refCount = 0
@@ -9,6 +10,15 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 export interface RoomInfo {
   roomId: string
   lessonId: string
+  context?: PlatformRuntimeHint & {
+    schoolName?: string
+    productName?: string
+  }
+  schoolId?: string
+  schoolName?: string
+  classId?: string
+  className?: string
+  subject?: string
   memberCount: number
   studentCount: number
   currentSlide: number
@@ -21,7 +31,20 @@ export interface RoomInfo {
     submittedCount: number
     totalStudents: number
   } | null
-  members: { userId: string; userName: string; role: string; clientType: string }[]
+  members: {
+    userId: string
+    userName: string
+    role: string
+    clientType: string
+    tenantId?: string
+    schoolId?: string
+    classId?: string
+    className?: string
+    gradeId?: string
+    subject?: string
+    externalUserId?: string
+    phone?: string
+  }[]
 }
 
 export interface LiveEvent {
@@ -127,12 +150,14 @@ export function useAdminSocket() {
     socket.on('connect', () => {
       isConnected.value = true
       const adminName = localStorage.getItem('admin_user_name') || '管理员'
+      const platformContext = getPlatformRuntimeHint()
       socket?.emit('room:join', {
         lessonId: 'admin-monitor',
         userId: 'admin-001',
         userName: adminName,
         role: 'admin',
         clientType: 'admin',
+        ...platformContext,
       })
       socket?.emit('admin:subscribe')
       socket?.emit('admin:rooms')

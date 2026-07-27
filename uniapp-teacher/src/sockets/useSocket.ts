@@ -1,6 +1,7 @@
 import { ref, onUnmounted } from 'vue'
 import { WS_NAMESPACE, WS_URL } from '@/shared/config'
 import { RoomEvent } from '@/shared/wsEvents'
+import { getPlatformJoinContext, type PlatformJoinContext } from '@/shared/platform'
 import { createNativeSocketIo, type SocketLike } from './nativeSocketIo'
 
 let sharedSocket: SocketLike | null = null
@@ -12,6 +13,7 @@ export interface TeacherJoinPayload {
   lessonId: string
   userId: string
   userName: string
+  platform?: Partial<PlatformJoinContext>
 }
 
 export function useSocket() {
@@ -24,6 +26,8 @@ export function useSocket() {
       userName: payload.userName,
       role: 'teacher',
       clientType: 'teacher-uniapp',
+      ...getPlatformJoinContext(),
+      ...(payload.platform || {}),
     })
   }
 

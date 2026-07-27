@@ -430,6 +430,7 @@
             </view>
             <view class="segmented">
               <button :class="{ active: quizMode === 'ai' }" @tap="quizMode = 'ai'">AI 生成</button>
+              <button :class="{ active: quizMode === 'bank' }" @tap="quizMode = 'bank'">校本题库</button>
               <button :class="{ active: quizMode === 'manual' }" @tap="quizMode = 'manual'">手动出题</button>
             </view>
             <template v-if="quizMode === 'ai'">
@@ -440,6 +441,22 @@
                 </button>
               </view>
               <Button block icon-left="sparkles" :loading="isGeneratingQuiz" @tap="generateQuiz">AI 自动出题</Button>
+            </template>
+            <template v-else-if="quizMode === 'bank'">
+              <input v-model="quizTopic" class="input" placeholder="知识点，例如：梯形图、编码器、坐标系" />
+              <view class="option-row">
+                <button v-for="d in difficultyOptions" :key="d.value" class="option-card compact" :class="{ active: quizDifficulty === d.value }" @tap="quizDifficulty = d.value">
+                  <text>{{ d.label }}</text>
+                </button>
+              </view>
+              <view class="option-row">
+                <text class="option-label">抽题数量：</text>
+                <button v-for="n in [3, 5, 10, 20]" :key="n" class="option-card compact" :class="{ active: quizCount === n }" @tap="quizCount = n">
+                  <text>{{ n }} 题</text>
+                </button>
+              </view>
+              <view class="hint-box">按当前学校、班级、课程和知识点从校本题库抽取题目，可继续编辑后下发。</view>
+              <Button block icon-left="book-open" :loading="isLoadingQuestionBank" @tap="loadSchoolQuestionBank">从校本题库抽题</Button>
             </template>
             <template v-else>
               <input v-model="manualQuizTitle" class="input" placeholder="测验标题" />
@@ -1025,6 +1042,7 @@ import { useSocket } from '@/sockets/useSocket'
 import { useClassroomStore, type StudentInfo } from '@/stores/classroom'
 import { RoomEvent } from '@/shared/wsEvents'
 import { API_BASE } from '@/shared/config'
+import { getPlatformJoinContext } from '@/shared/platform'
 
 type Panel = '' | 'courseware' | 'broadcast' | 'quiz' | 'attendance' | 'compete' | 'ai' | 'rollcall' | 'discuss' | 'paper' | 'report' | 'ai-whiteboard' | 'ai-settings'
 type QuizQuestion = {
@@ -1076,12 +1094,13 @@ const competeQuestion = ref('')
 const aiTopic = ref('')
 const aiPrompt = ref('')
 const startingAttendance = ref(false)
-const quizMode = ref<'ai' | 'manual'>('ai')
+const quizMode = ref<'ai' | 'bank' | 'manual'>('ai')
 const quizCount = ref(20)
 const quizDifficulty = ref('medium')
 const perStudentCount = ref(5)
 const randomQuizMode = ref(true)
 const isGeneratingQuiz = ref(false)
+const isLoadingQuestionBank = ref(false)
 const isGeneratingCourseware = ref(false)
 const quizDraft = ref<QuizQuestion[]>([])
 const manualQuizTitle = ref('随堂测验')
@@ -2895,6 +2914,48 @@ function loadQuizPreset(kind: 'vfd' | 'servo') {
   manualQuizTitle.value = preset.title
   quizDraft.value = normalizeQuestions(preset.questions)
   toast(`已载入「${preset.title}」演示题库 ${preset.questions.length} 题`, 'success')
+}
+
+function loadSchoolQuestionBank() {
+  if (isLoadingQuestionBank.value) return
+  const platform = getPlatformJoinContext()
+  const topic = quizTopic.value.trim()
+  isLoadingQuestionBank.value = true
+  uni.request({
+    url: `${API_BASE}/platform/classroom/question-bank/extract`,
+    method: 'POST',
+    header: { 'content-type': 'application/json' },
+    data: {
+      ...platform,
+      subject: platform.subject || store.courseName,
+      knowledgePoints: topic ? [topic] : undefined,
+      difficulty: quizDifficulty.value,
+      limit: quizCount.value,
+      scene: 'in_class_quiz',
+    },
+    success: (res: any) => {
+      const ok = res.statusCode >= 200 && res.statusCode < 300
+      if (!ok) {
+        toast(`题库抽题失败：${res.statusCode}`)
+        return
+      }
+      const raw = res.data || {}
+      const result = raw.data || raw
+      const questions = normalizeQuestions(result.questions || [])
+      if (questions.length === 0) {
+        toast('校本题库暂无匹配题目')
+        return
+      }
+      manualQuizTitle.value = topic ? `${topic} 随堂测验` : `${store.courseName || '校本题库'} 随堂测验`
+      quizDraft.value = questions
+      randomQuizMode.value = questions.length >= 5
+      toast(`已抽取 ${questions.length} 道校本题`, 'success')
+    },
+    fail: () => toast('题库服务暂不可用'),
+    complete: () => {
+      isLoadingQuestionBank.value = false
+    },
+  })
 }
 
 function generateQuiz() {
