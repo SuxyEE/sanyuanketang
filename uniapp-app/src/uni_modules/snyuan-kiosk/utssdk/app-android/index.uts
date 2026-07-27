@@ -1,0 +1,180 @@
+/**
+ * snyuan-kiosk · Android Kiosk 原生实现（UTS）。
+ *
+ * 仅在 App-Android + Device Owner（dpm set-device-owner 后）才完全生效。
+ * 其他平台 / 未配置 owner 时方法返回 false 但不抛错。
+ *
+ * 配套：
+ *   - AndroidManifest.xml：声明 SnyuanDeviceAdminReceiver
+ *   - res/xml/device_admin.xml：声明 policy（lock-task / disable-keyguard）
+ *   - manifest.json：在 app-plus.nativePlugins 引用本插件
+ *
+ * Device Owner 设置方法：见 docs/KIOSK-SETUP.md。
+ */
+
+import Activity from 'android.app.Activity'
+import Context from 'android.content.Context'
+import DevicePolicyManager from 'android.app.admin.DevicePolicyManager'
+import ComponentName from 'android.content.ComponentName'
+import KeyguardManager from 'android.app.KeyguardManager'
+import View from 'android.view.View'
+import WindowManager from 'android.view.WindowManager'
+import Build from 'android.os.Build'
+
+const ADMIN_RECEIVER_CLASS = 'com.snyuan.kiosk.SnyuanDeviceAdminReceiver'
+
+function getActivity(): Activity | null {
+  return UTSAndroid.getUniActivity()
+}
+
+function getDpm(): DevicePolicyManager | null {
+  const act = getActivity()
+  if (act == null) return null
+  return act.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+}
+
+function getAdminComponent(): ComponentName | null {
+  const act = getActivity()
+  if (act == null) return null
+  return new ComponentName(act, ADMIN_RECEIVER_CLASS)
+}
+
+export function isDeviceOwner(): boolean {
+  const dpm = getDpm()
+  const act = getActivity()
+  if (dpm == null || act == null) return false
+  try {
+    return dpm.isDeviceOwnerApp(act.getPackageName())
+  } catch (_e) {
+    return false
+  }
+}
+
+export function startLockTask(): boolean {
+  const act = getActivity()
+  if (act == null) return false
+  try {
+    if (isDeviceOwner()) {
+      const dpm = getDpm()
+      const admin = getAdminComponent()
+      if (dpm != null && admin != null) {
+        // 把本包加入 lockTask 白名单（Device Owner 才有权限）
+        dpm.setLockTaskPackages(admin, arrayOf(act.getPackageName()))
+      }
+    }
+    act.startLockTask()
+    return true
+  } catch (_e) {
+    return false
+  }
+}
+
+export function stopLockTask(): boolean {
+  const act = getActivity()
+  if (act == null) return false
+  try {
+    act.stopLockTask()
+    return true
+  } catch (_e) {
+    return false
+  }
+}
+
+export function setKeyguardDisabled(disabled: boolean): boolean {
+  const act = getActivity()
+  if (act == null) return false
+  try {
+    if (disabled) {
+      const km = act.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+      if (Build.VERSION.SDK_INT >= 26) {
+        km.requestDismissKeyguard(act, null)
+      }
+      act.getWindow().addFlags(WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD)
+      act.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    } else {
+      act.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD)
+    }
+    return true
+  } catch (_e) {
+    return false
+  }
+}
+
+export function setSystemUiVisibility(opts: UTSJSONObject): boolean {
+  const act = getActivity()
+  if (act == null) return false
+  try {
+    const hideStatus = opts.getBoolean('hideStatusBar') ?? true
+    const hideNav = opts.getBoolean('hideNavBar') ?? true
+    let flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+      .or(View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION)
+      .or(View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN)
+    if (hideStatus) flags = flags.or(View.SYSTEM_UI_FLAG_FULLSCREEN)
+    if (hideNav) {
+      flags = flags.or(View.SYSTEM_UI_FLAG_HIDE_NAVIGATION)
+        .or(View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY)
+    }
+    act.getWindow().getDecorView().setSystemUiVisibility(flags)
+    return true
+  } catch (_e) {
+    return false
+  }
+}
+
+export function setScreenAlwaysOn(on: boolean): boolean {
+  const act = getActivity()
+  if (act == null) return false
+  try {
+    if (on) {
+      act.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    } else {
+      act.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
+    return true
+  } catch (_e) {
+    return false
+  }
+}
+
+/**
+ * 禁用 / 启用通知栏下拉（status bar 上半部分）。
+ * 仅 Device Owner + Android 6.0+ 生效。
+ *
+ * 在 HyperOS 14 / MIUI 上，光 IMMERSIVE_STICKY 还会被用户拉下来；
+ * 必须 setStatusBarDisabled(true) 才能彻底禁用。
+ */
+export function setStatusBarDisabled(disabled: boolean): boolean {
+  const dpm = getDpm()
+  const admin = getAdminComponent()
+  if (dpm == null || admin == null) return false
+  try {
+    if (Build.VERSION.SDK_INT < 23) return false
+    dpm.setStatusBarDisabled(admin, disabled)
+    return true
+  } catch (_e) {
+    return false
+  }
+}
+
+export function diagnose(): UTSJSONObject {
+  const o = new UTSJSONObject()
+  o['isDeviceOwner'] = isDeviceOwner()
+  o['sdkInt'] = Build.VERSION.SDK_INT
+  o['model'] = Build.MODEL
+  o['manufacturer'] = Build.MANUFACTURER
+  // isInLockTask 需要 ActivityManager.getLockTaskModeState (API 23+)
+  // 这里简化处理：能调到 startLockTask 不抛错就认为可能在 lockTask 模式
+  o['isInLockTask'] = false
+  o['isKeyguardDisabled'] = false
+  try {
+    const act = getActivity()
+    if (act != null && Build.VERSION.SDK_INT >= 23) {
+      const am = act.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+      const mode = am.getLockTaskModeState()
+      o['isInLockTask'] = mode != android.app.ActivityManager.LOCK_TASK_MODE_NONE
+    }
+  } catch (_e) {
+    /* swallow */
+  }
+  return o
+}

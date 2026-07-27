@@ -1,0 +1,109 @@
+{
+  "easycom": {
+    "autoscan": true,
+    "custom": {}
+  },
+  "pages": [
+    {
+      "path": "pages/login/index",
+      "style": {
+        "navigationBarTitleText": "登录",
+        "navigationStyle": "custom",
+        "app-plus": {
+          "titleNView": false
+        }
+      }
+    },
+    {
+      "path": "pages/role-select/index",
+      "style": {
+        "navigationBarTitleText": "选择身份",
+        "navigationStyle": "custom",
+        "app-plus": {
+          "titleNView": false
+        }
+      }
+    },
+    {
+      "path": "pages/course-select/index",
+      "style": {
+        "navigationBarTitleText": "选择课程",
+        "navigationStyle": "custom",
+        "app-plus": {
+          "titleNView": false
+        }
+      }
+    },
+    {
+      "path": "pages/classroom/index",
+      "style": {
+        "navigationBarTitleText": "教师课堂",
+        "navigationStyle": "custom",
+        "app-plus": {
+          "titleNView": false,
+          "scrollIndicator": "none",
+          "pullToRefresh": { "support": false }
+        }
+      }
+    },
+    {
+      "path": "pages/student/join/index",
+      "style": {
+        "navigationBarTitleText": "加入课堂",
+        "navigationStyle": "custom",
+        "app-plus": {
+          "titleNView": false
+        }
+      }
+    },
+    {
+      "path": "pages/student/classroom/index",
+      "style": {
+        "navigationBarTitleText": "课堂",
+        "navigationStyle": "custom",
+        "app-plus": {
+          "titleNView": false,
+          "scrollIndicator": "none",
+          "pullToRefresh": { "support": false }
+        }
+      }
+    },
+    {
+      "path": "pages/student/after-class/index",
+      "style": {
+        "navigationBarTitleText": "课后",
+        "navigationStyle": "custom",
+        "app-plus": {
+          "titleNView": false
+        }
+      }
+    },
+    {
+      "path": "pages/student/wrong-book/index",
+      "style": {
+        "navigationBarTitleText": "我的错题本",
+        "navigationStyle": "custom",
+        "app-plus": {
+          "titleNView": false
+        }
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "三元课堂",
+    "navigationBarBackgroundColor": "#ffffff",
+    "backgroundColor": "#f5f7fa",
+    "app-plus": {
+      "background": "#f5f7fa",
+      "titleNView": false
+    }
+  },
+  "tabBar": {},
+  "preloadRule": {
+    "pages/student/join/index": {
+      "network": "all",
+      "packages": ["pages/student/classroom/index"]
+    }
+  }
+}

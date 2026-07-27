@@ -1,0 +1,48 @@
+/**
+ * snyuan-kiosk · 非 Android 平台 fallback 入口。
+ *
+ * HBuilderX 在不同 platform 编译时会优先选择 platform 子目录下的 index.uts
+ * （如 `app-android/index.uts`）。本文件作为 H5 / iOS / 小程序 / 微信小程序 等
+ * 平台的 fallback，所有方法返回 false / 空数据，确保业务调用不抛错。
+ *
+ * Android 平台的真实实现见 `app-android/index.uts`。
+ */
+
+export function isDeviceOwner(): boolean {
+  return false
+}
+
+export function startLockTask(): boolean {
+  return false
+}
+
+export function stopLockTask(): boolean {
+  return false
+}
+
+export function setKeyguardDisabled(_disabled: boolean): boolean {
+  return false
+}
+
+export function setSystemUiVisibility(_opts: UTSJSONObject): boolean {
+  return false
+}
+
+export function setScreenAlwaysOn(_on: boolean): boolean {
+  return false
+}
+
+export function setStatusBarDisabled(_disabled: boolean): boolean {
+  return false
+}
+
+export function diagnose(): UTSJSONObject {
+  const o = new UTSJSONObject()
+  o['isDeviceOwner'] = false
+  o['isInLockTask'] = false
+  o['isKeyguardDisabled'] = false
+  o['sdkInt'] = 0
+  o['model'] = ''
+  o['manufacturer'] = ''
+  return o
+}

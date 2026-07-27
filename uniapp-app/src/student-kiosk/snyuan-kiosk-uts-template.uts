@@ -1,0 +1,119 @@
+/**
+ * snyuan-kiosk UTS 插件 · Android 端模板 · @deprecated
+ *
+ * 本文件保留作为历史参考。**实际生效的实现已经移到**：
+ *   src/uni_modules/snyuan-kiosk/utssdk/app-android/index.uts
+ *
+ * HBuilderX 打包 App-Android 时只会扫描 `uni_modules/<id>/` 路径，不读取本文件。
+ *
+ * 如需修改 Kiosk 行为，请编辑 `uni_modules/snyuan-kiosk/utssdk/app-android/index.uts`，
+ * 然后在 HBuilderX 中重新打包基座 / 自定义基座。
+ *
+ * Device Owner 一次性配置请见 `docs/KIOSK-SETUP.md`。
+ */
+
+import Activity from 'android.app.Activity'
+import Context from 'android.content.Context'
+import DevicePolicyManager from 'android.app.admin.DevicePolicyManager'
+import ComponentName from 'android.content.ComponentName'
+import KeyguardManager from 'android.app.KeyguardManager'
+import View from 'android.view.View'
+import WindowManager from 'android.view.WindowManager'
+import Build from 'android.os.Build'
+
+export class SnyuanKiosk {
+  private static getActivity(): Activity {
+    return UTSAndroid.getUniActivity()!
+  }
+
+  private static getDpm(): DevicePolicyManager {
+    return SnyuanKiosk.getActivity().getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+  }
+
+  static isDeviceOwner(): boolean {
+    const dpm = SnyuanKiosk.getDpm()
+    const pkg = SnyuanKiosk.getActivity().getPackageName()
+    return dpm.isDeviceOwnerApp(pkg)
+  }
+
+  static startLockTask(): boolean {
+    const act = SnyuanKiosk.getActivity()
+    if (SnyuanKiosk.isDeviceOwner()) {
+      // 把本应用加入允许 lockTask 的白名单
+      const dpm = SnyuanKiosk.getDpm()
+      const admin = new ComponentName(act, 'com.snyuan.kiosk.SnyuanDeviceAdminReceiver')
+      dpm.setLockTaskPackages(admin, arrayOf(act.getPackageName()))
+    }
+    try {
+      act.startLockTask()
+      return true
+    } catch (_e) {
+      return false
+    }
+  }
+
+  static stopLockTask(): boolean {
+    try {
+      SnyuanKiosk.getActivity().stopLockTask()
+      return true
+    } catch (_e) {
+      return false
+    }
+  }
+
+  static setKeyguardDisabled(disabled: boolean): boolean {
+    const act = SnyuanKiosk.getActivity()
+    if (disabled) {
+      const km = act.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+      if (Build.VERSION.SDK_INT >= 26) {
+        km.requestDismissKeyguard(act, null)
+      }
+      act.getWindow().addFlags(WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD)
+      act.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    } else {
+      act.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD)
+    }
+    return true
+  }
+
+  static setSystemUiVisibility(opts: UTSJSONObject): boolean {
+    const act = SnyuanKiosk.getActivity()
+    const hideStatus = opts.getBoolean('hideStatusBar') ?? true
+    const hideNav = opts.getBoolean('hideNavBar') ?? true
+    let flags = 0
+    if (hideStatus) flags = flags or View.SYSTEM_UI_FLAG_FULLSCREEN
+    if (hideNav) flags = flags or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+    act.getWindow().getDecorView().setSystemUiVisibility(flags)
+    return true
+  }
+
+  static setScreenAlwaysOn(on: boolean): boolean {
+    const act = SnyuanKiosk.getActivity()
+    if (on) {
+      act.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    } else {
+      act.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
+    return true
+  }
+
+  static diagnose(): UTSJSONObject {
+    const o = new UTSJSONObject()
+    o['isDeviceOwner'] = SnyuanKiosk.isDeviceOwner()
+    o['sdkInt'] = Build.VERSION.SDK_INT
+    o['model'] = Build.MODEL
+    o['manufacturer'] = Build.MANUFACTURER
+    o['isInLockTask'] = false  // API 23+ 可调 activityManager.getLockTaskModeState
+    o['isKeyguardDisabled'] = true
+    return o
+  }
+}
+
+/** UTS 模块对外暴露的函数 — 必须用 UTS export，不要写 ESM export */
+export function isDeviceOwner(): boolean { return SnyuanKiosk.isDeviceOwner() }
+export function startLockTask(): boolean { return SnyuanKiosk.startLockTask() }
+export function stopLockTask(): boolean { return SnyuanKiosk.stopLockTask() }
+export function setKeyguardDisabled(disabled: boolean): boolean { return SnyuanKiosk.setKeyguardDisabled(disabled) }
+export function setSystemUiVisibility(opts: UTSJSONObject): boolean { return SnyuanKiosk.setSystemUiVisibility(opts) }
+export function setScreenAlwaysOn(on: boolean): boolean { return SnyuanKiosk.setScreenAlwaysOn(on) }
+export function diagnose(): UTSJSONObject { return SnyuanKiosk.diagnose() }

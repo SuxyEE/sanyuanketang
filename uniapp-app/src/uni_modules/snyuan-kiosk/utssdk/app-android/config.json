@@ -1,0 +1,42 @@
+{
+  "minSdkVersion": "24",
+  "targetSdkVersion": "34",
+  "dependencies": [],
+  "javaDependencies": [],
+  "manifest": {
+    "permissions": [
+      "android.permission.REORDER_TASKS",
+      "android.permission.DISABLE_KEYGUARD",
+      "android.permission.WAKE_LOCK",
+      "android.permission.STATUS_BAR",
+      "android.permission.EXPAND_STATUS_BAR"
+    ],
+    "abiFilters": ["armeabi-v7a", "arm64-v8a"]
+  },
+  "androidComponents": {
+    "receivers": [
+      {
+        "name": "com.snyuan.kiosk.SnyuanDeviceAdminReceiver",
+        "exported": true,
+        "permission": "android.permission.BIND_DEVICE_ADMIN",
+        "metaData": [
+          {
+            "name": "android.app.device_admin",
+            "resource": "@xml/snyuan_device_admin"
+          }
+        ],
+        "intentFilters": [
+          {
+            "actions": ["android.app.action.DEVICE_ADMIN_ENABLED"]
+          }
+        ]
+      }
+    ]
+  },
+  "resources": [
+    {
+      "src": "res/xml/snyuan_device_admin.xml",
+      "dest": "res/xml/snyuan_device_admin.xml"
+    }
+  ]
+}

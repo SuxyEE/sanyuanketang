@@ -1,5 +1,6 @@
 packages:
   - 'packages/*'
   - 'apps/*'
+  - 'uniapp-app'
   - 'uniapp-student'
   - 'uniapp-teacher'
