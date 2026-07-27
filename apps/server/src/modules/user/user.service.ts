@@ -58,6 +58,31 @@ export class UserService implements OnModuleInit {
     })
   }
 
+  /** 按书舟统一身份 ID 查已绑定用户 */
+  async findByExternalUserId(externalUserId: string) {
+    if (!externalUserId) return null
+    return this.userRepo.findOneBy({ externalUserId })
+  }
+
+  /**
+   * 首次统一登录时的手机号归并候选：
+   * 只有在同一租户/学校范围内手机号唯一、且该账号尚未绑定其他中央身份时才可用，
+   * 否则宁可新建账号，也不要把两个人并成一个。
+   */
+  async findBindableByPhone(phone: string, tenantId?: string, schoolId?: string) {
+    if (!phone) return null
+    const where: Record<string, unknown> = { phone }
+    if (tenantId) where.tenantId = tenantId
+    if (schoolId) where.schoolId = schoolId
+    const matched = await this.userRepo.find({ where, take: 2 })
+    if (matched.length !== 1) return null
+    return matched[0].externalUserId ? null : matched[0]
+  }
+
+  async existsByUsername(username: string) {
+    return (await this.userRepo.count({ where: { username } })) > 0
+  }
+
   async findAll(role?: string) {
     const where: any = {}
     if (role) where.role = role

@@ -5,6 +5,7 @@ import { AccessCodeService } from './access-code.service'
 /**
  * 拦截需要保护的 API：
  *   - 总是放行 /api/v1/access-code/*（要不然没法登录）
+ *   - 总是放行 /api/v1/auth/shuzhou/*（统一登录跳转带不上访问码请求头）
  *   - 总是放行 /api/v1/health（健康检查通常需要无密码）
  *   - 其余 API 路径 → 校验 cookie 的 HMAC token
  *
@@ -23,6 +24,8 @@ export class AccessCodeMiddleware implements NestMiddleware {
 
     if (
       url.startsWith('/api/v1/access-code/') ||
+      // 统一登录是浏览器跳转，带不上访问码请求头；这几个端点各自有 state / 授权码 / 一次性票据把关
+      url.startsWith('/api/v1/auth/shuzhou/') ||
       url === '/api/v1/health' ||
       url === '/api/v1/access-code/status'
     ) {

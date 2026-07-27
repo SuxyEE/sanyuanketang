@@ -3,11 +3,12 @@
     <el-aside :width="isCollapsed ? '64px' : '232px'" class="layout-aside">
       <div class="logo-area" :class="{ 'is-collapsed': isCollapsed }">
         <span class="logo-mark" aria-hidden="true">
-          <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: 100%; display: block;"><rect width="32" height="32" rx="7" fill="#2563eb"/><text x="16" y="23" font-size="20" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-weight="bold">三</text></svg>
+          <img v-if="logoUrl" :src="logoUrl" alt="" />
+          <span v-else>{{ logoText }}</span>
         </span>
         <span v-show="!isCollapsed" class="logo-text">
-          <span class="logo-name">三元课堂</span>
-          <span class="logo-brand">管理后台</span>
+          <span class="logo-name">{{ productName }}</span>
+          <span class="logo-brand">{{ schoolName }} · 管理后台</span>
         </span>
       </div>
 
@@ -73,9 +74,9 @@
           </button>
           <el-dropdown>
             <div class="user-info" tabindex="0" aria-label="用户菜单">
-              <el-avatar :size="32" class="user-avatar">管</el-avatar>
+              <el-avatar :size="32" class="user-avatar">{{ userInitial }}</el-avatar>
               <div class="user-text">
-                <span class="user-name">管理员</span>
+                <span class="user-name">{{ userName }}</span>
                 <span class="user-role">超级管理员</span>
               </div>
               <el-icon class="user-arrow"><ArrowDown /></el-icon>
@@ -83,7 +84,7 @@
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item>个人设置</el-dropdown-item>
-                <el-dropdown-item divided>退出登录</el-dropdown-item>
+                <el-dropdown-item divided @click="handleLogout">退出登录</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -98,11 +99,29 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { usePlatformConfig } from '../composables/usePlatformConfig'
+import { logoutShuzhouCenter } from '@/lib/oidc'
 
 const route = useRoute()
+const router = useRouter()
 const isCollapsed = ref(false)
+const userName = ref(localStorage.getItem('admin_user_name') || '管理员')
+const userInitial = computed(() => userName.value.trim().charAt(0) || '管')
+const { productName, schoolName, logoText, logoUrl, load } = usePlatformConfig()
+
+onMounted(() => {
+  void load()
+})
+
+/** 主动登出才联动注销中央会话；401 等被动失效只清本地态 */
+async function handleLogout() {
+  await logoutShuzhouCenter()
+  localStorage.removeItem('admin_token')
+  localStorage.removeItem('admin_user_name')
+  router.replace('/login')
+}
 </script>
 
 <style scoped>
@@ -138,6 +157,18 @@ const isCollapsed = ref(false)
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  border-radius: 7px;
+  background: var(--color-brand-500);
+  color: #fff;
+  font-size: 20px;
+  font-weight: 700;
+  overflow: hidden;
+}
+
+.logo-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .logo-text {

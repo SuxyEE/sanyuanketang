@@ -5,6 +5,12 @@ import { AuthService } from './auth.service'
 import { AuthController } from './auth.controller'
 import { JwtAuthGuard } from './auth.guard'
 import { UserModule } from '../user/user.module'
+import { ShuzhouAuthConfig } from './shuzhou/shuzhou-auth.config'
+import { ShuzhouIdentityService } from './shuzhou/shuzhou-identity.service'
+import { ShuzhouJwksService } from './shuzhou/shuzhou-jwks.service'
+import { ShuzhouOidcService } from './shuzhou/shuzhou-oidc.service'
+import { ShuzhouSsoService } from './shuzhou/shuzhou-sso.service'
+import { ShuzhouController } from './shuzhou/shuzhou.controller'
 
 @Module({
   imports: [
@@ -18,8 +24,16 @@ import { UserModule } from '../user/user.module'
       }),
     }),
   ],
-  controllers: [AuthController],
-  providers: [AuthService, JwtAuthGuard],
-  exports: [AuthService, JwtAuthGuard, JwtModule],
+  controllers: [AuthController, ShuzhouController],
+  providers: [
+    AuthService,
+    JwtAuthGuard,
+    ShuzhouAuthConfig,
+    ShuzhouJwksService,
+    ShuzhouOidcService,
+    ShuzhouSsoService,
+    ShuzhouIdentityService,
+  ],
+  exports: [AuthService, JwtAuthGuard, JwtModule, ShuzhouOidcService],
 })
 export class AuthModule {}

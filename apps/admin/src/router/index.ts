@@ -11,6 +11,19 @@ const router = createRouter({
       name: 'Login',
       component: () => import('../views/Login.vue'),
     },
+    // 统一登录的两个免鉴权路由：/oidc/start 发起，/oidc/callback 用一次性票据换课堂会话
+    {
+      path: '/oidc/start',
+      name: 'OidcStart',
+      component: () => import('../views/oidc/Start.vue'),
+      meta: { noAuth: true },
+    },
+    {
+      path: '/oidc/callback',
+      name: 'OidcCallback',
+      component: () => import('../views/oidc/Callback.vue'),
+      meta: { noAuth: true },
+    },
     {
       path: '/',
       component: () => import('../layout/MainLayout.vue'),

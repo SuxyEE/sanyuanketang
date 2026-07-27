@@ -29,21 +29,46 @@
           </el-button>
         </el-form-item>
       </el-form>
+      <div v-if="ssoEnabled" class="sso-area">
+        <div class="sso-divider"><span>或</span></div>
+        <el-button class="sso-btn" size="large" plain @click="handleShuzhouLogin">
+          使用书舟统一登录
+        </el-button>
+      </div>
       <p class="demo-hint">演示账号：<code>admin</code> / <code>admin</code></p>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { onMounted, reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { login as apiLogin } from '../api/auth'
+import { fetchShuzhouStatus, startShuzhouLogin } from '@/lib/oidc'
 
 const router = useRouter()
+const route = useRoute()
 const loading = ref(false)
+const ssoEnabled = ref(false)
 const formRef = ref<FormInstance | null>(null)
 const form = reactive({ username: '', password: '' })
+
+onMounted(async () => {
+  // 统一登录失败时后端会带着原因跳回本页
+  const ssoError = typeof route.query.sso_error === 'string' ? route.query.sso_error : ''
+  if (ssoError) ElMessage.error(ssoError)
+
+  try {
+    ssoEnabled.value = (await fetchShuzhouStatus()).enabled
+  } catch {
+    ssoEnabled.value = false
+  }
+})
+
+function handleShuzhouLogin() {
+  startShuzhouLogin(route.query.return_to)
+}
 
 const rules: FormRules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
@@ -116,6 +141,33 @@ async function handleLogin() {
   width: 100%;
   height: 44px;
   font-size: 16px;
+}
+
+.sso-area {
+  margin-top: -8px;
+}
+
+.sso-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  color: #c0c4cc;
+  font-size: 12px;
+}
+
+.sso-divider::before,
+.sso-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #ebeef5;
+}
+
+.sso-btn {
+  width: 100%;
+  height: 44px;
+  font-size: 15px;
 }
 
 .demo-hint {
