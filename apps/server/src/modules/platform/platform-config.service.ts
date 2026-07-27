@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
+import { Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
@@ -67,23 +67,57 @@ export class PlatformConfigService implements OnModuleInit {
     }))
   }
 
-  getSchoolConfig(schoolId?: string, tenantId?: string): PlatformSchoolConfig {
+  /**
+   * 精确解析学校配置，解析不到返回 null。
+   * schoolId 既可以是课堂自己的 slug，也可以是智慧校园的数字 school_id。
+   */
+  findSchoolConfig(schoolId?: string, tenantId?: string): PlatformSchoolConfig | null {
     const normalizedSchoolId = String(schoolId || '').trim()
     const normalizedTenantId = String(tenantId || '').trim()
+    if (!normalizedSchoolId) return null
+
     const schools = this.configFile.schools
+    const idMatches = (s: PlatformSchoolConfig) =>
+      s.schoolId === normalizedSchoolId || String(s.campusSchoolId || '').trim() === normalizedSchoolId
 
     const matched =
-      schools.find(s => normalizedSchoolId && s.schoolId === normalizedSchoolId && (!normalizedTenantId || s.tenantId === normalizedTenantId)) ||
-      schools.find(s => normalizedSchoolId && s.schoolId === normalizedSchoolId) ||
-      schools.find(s => s.schoolId === this.configFile.defaultSchoolId) ||
-      schools[0] ||
-      FALLBACK_CONFIG.schools[0]
+      schools.find(s => idMatches(s) && (!normalizedTenantId || s.tenantId === normalizedTenantId)) ||
+      schools.find(s => idMatches(s))
 
-    return this.clone(matched)
+    return matched ? this.clone(matched) : null
+  }
+
+  /**
+   * 兜底版解析：内部链路（WS 上下文、题库、学情）不能因为一个未知学校就中断，
+   * 所以仍返回默认学校，但会告警。对外展示的配置请走 getPublicSchoolConfig。
+   */
+  getSchoolConfig(schoolId?: string, tenantId?: string): PlatformSchoolConfig {
+    return this.findSchoolConfig(schoolId, tenantId) ?? this.defaultSchoolConfig(schoolId)
+  }
+
+  private defaultSchoolConfig(requestedSchoolId?: string): PlatformSchoolConfig {
+    if (String(requestedSchoolId || '').trim()) {
+      this.logger.warn(
+        `未找到学校配置 schoolId=${String(requestedSchoolId).trim()}，暂用默认学校 ${this.configFile.defaultSchoolId}；` +
+          '智慧校园用数字 school_id，课堂配置需要用 campusSchoolId 显式对上。',
+      )
+    }
+    const fallback =
+      this.configFile.schools.find(s => s.schoolId === this.configFile.defaultSchoolId) ||
+      this.configFile.schools[0] ||
+      FALLBACK_CONFIG.schools[0]
+    return this.clone(fallback)
   }
 
   getPublicSchoolConfig(schoolId?: string, tenantId?: string) {
-    const school = this.getSchoolConfig(schoolId, tenantId)
+    // 品牌展示不能张冠李戴：明确传了学校却解析不到时报 404，不要拿默认学校顶上
+    const resolved = String(schoolId || '').trim()
+      ? this.findSchoolConfig(schoolId, tenantId)
+      : this.getSchoolConfig(schoolId, tenantId)
+    if (!resolved) {
+      throw new NotFoundException(`未找到学校 ${String(schoolId).trim()} 的运行配置`)
+    }
+    const school = resolved
     return {
       tenantId: school.tenantId,
       schoolId: school.schoolId,
@@ -125,11 +159,13 @@ export class PlatformConfigService implements OnModuleInit {
     externalUserId?: string
     phone?: string
   }): ClassroomPlatformContext {
-    const school = this.getSchoolConfig(input.schoolId, input.tenantId)
+    const matched = this.findSchoolConfig(input.schoolId, input.tenantId)
+    const school = matched ?? this.defaultSchoolConfig(input.schoolId)
     return {
       tenantId: String(input.tenantId || school.tenantId).trim(),
       schoolId: String(input.schoolId || school.schoolId).trim(),
-      schoolName: school.schoolName,
+      // 学校没配过就留空，不要顶着默认学校的名字对外显示
+      schoolName: this.resolveSchoolName(school, matched, input.schoolId),
       productName: school.productName,
       classId: this.cleanOptional(input.classId),
       className: this.cleanOptional(input.className),
@@ -141,11 +177,13 @@ export class PlatformConfigService implements OnModuleInit {
   }
 
   mergeContext(base: ClassroomPlatformContext, next: Partial<ClassroomPlatformContext>): ClassroomPlatformContext {
-    const school = this.getSchoolConfig(next.schoolId || base.schoolId, next.tenantId || base.tenantId)
+    const schoolId = next.schoolId || base.schoolId
+    const matched = this.findSchoolConfig(schoolId, next.tenantId || base.tenantId)
+    const school = matched ?? this.defaultSchoolConfig(schoolId)
     return {
       tenantId: next.tenantId || base.tenantId || school.tenantId,
       schoolId: next.schoolId || base.schoolId || school.schoolId,
-      schoolName: school.schoolName,
+      schoolName: this.resolveSchoolName(school, matched, schoolId),
       productName: school.productName,
       classId: next.classId || base.classId,
       className: next.className || base.className,
@@ -197,6 +235,15 @@ export class PlatformConfigService implements OnModuleInit {
       if (seen.has(key)) throw new Error(`duplicate school config: ${key}`)
       seen.add(key)
     }
+  }
+
+  private resolveSchoolName(
+    school: PlatformSchoolConfig,
+    matched: PlatformSchoolConfig | null,
+    requestedSchoolId?: string,
+  ): string {
+    if (matched) return school.schoolName
+    return String(requestedSchoolId || '').trim() ? '' : school.schoolName
   }
 
   private cleanOptional(value: unknown): string | undefined {

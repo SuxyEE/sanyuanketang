@@ -104,6 +104,50 @@
         "endpoint": "",
         "tokenEnv": "SMART_CAMPUS_INTERNAL_TOKEN"
       }
+    },
+    {
+      "tenantId": "101014",
+      "schoolId": "jinlinwan",
+      "campusSchoolId": "25",
+      "schoolName": "厦门金林湾实验学校",
+      "productName": "多元课堂",
+      "branding": {
+        "productName": "多元课堂",
+        "schoolName": "厦门金林湾实验学校",
+        "logoText": "多",
+        "logoUrl": "",
+        "primaryColor": "#2f54eb",
+        "aiColor": "#722ed1",
+        "backgroundImageUrl": "",
+        "siderBackground": "#0e1b3a"
+      },
+      "features": {
+        "questionBank": true,
+        "learningRecordSync": true,
+        "aiWhiteboard": true,
+        "aiPractice": true,
+        "wrongBook": true,
+        "classroomMonitor": true
+      },
+      "model": {
+        "provider": "openai-compatible",
+        "model": "qwen-plus",
+        "baseUrlEnv": "OPENAI_BASE_URL",
+        "apiKeyEnv": "OPENAI_API_KEY",
+        "temperature": 0.3
+      },
+      "dataSources": [],
+      "questionBank": {
+        "mode": "local-fixture",
+        "extractPath": "/api/v1/question-bank/extract",
+        "tokenEnv": "SCHOOL_QUESTION_BANK_TOKEN",
+        "mockQuestions": []
+      },
+      "learningRecordSink": {
+        "mode": "outbox",
+        "endpoint": "",
+        "tokenEnv": "SMART_CAMPUS_INTERNAL_TOKEN"
+      }
     }
   ]
 }

@@ -78,6 +78,11 @@ export interface PlatformLearningRecordSinkConfig {
 export interface PlatformSchoolConfig {
   tenantId: string
   schoolId: string
+  /**
+   * 智慧校园的数字 school_id。统一登录令牌里带的是这个值，而课堂配置用的是 slug，
+   * 两边不是同一个命名空间，靠这个字段显式对上。
+   */
+  campusSchoolId?: string
   schoolName: string
   productName: string
   branding: SchoolBrandingConfig

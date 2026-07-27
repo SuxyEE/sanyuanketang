@@ -47,9 +47,9 @@ export function usePlatformConfig() {
     loaded,
     error,
     runtimeHint: computed<PlatformRuntimeHint>(() => getPlatformRuntimeHint()),
-    productName: computed(() => config.value.productName || config.value.branding?.productName || '三元课堂'),
-    schoolName: computed(() => config.value.schoolName || config.value.branding?.schoolName || '学校'),
-    logoText: computed(() => config.value.branding?.logoText || '三'),
+    productName: computed(() => config.value.productName || config.value.branding?.productName || '智慧课堂'),
+    schoolName: computed(() => config.value.schoolName || config.value.branding?.schoolName || '未配置学校'),
+    logoText: computed(() => config.value.branding?.logoText || '课'),
     logoUrl: computed(() => config.value.branding?.logoUrl || ''),
     load,
   }

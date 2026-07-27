@@ -84,15 +84,20 @@ export async function fetchPlatformConfig(hint = getPlatformRuntimeHint()): Prom
   return res.json()
 }
 
+/**
+ * 读不到平台配置时的兜底。
+ * 刻意不带任何具体学校：顶着别的学校的名字比留空更糟，
+ * 金林湾的老师不该在配置读取失败时看到集美工业学院。
+ */
 export const fallbackPlatformConfig: PlatformPublicConfig = {
-  tenantId: 'longdao',
-  schoolId: DEFAULT_SCHOOL_ID,
-  schoolName: '集美工业学院',
-  productName: '三元课堂',
+  tenantId: '',
+  schoolId: '',
+  schoolName: '',
+  productName: '智慧课堂',
   branding: {
-    productName: '三元课堂',
-    schoolName: '集美工业学院',
-    logoText: '三',
+    productName: '智慧课堂',
+    schoolName: '',
+    logoText: '课',
     primaryColor: '#2f54eb',
     aiColor: '#722ed1',
     siderBackground: '#0e1b3a',
