@@ -6,12 +6,16 @@
 ALTER TABLE users
   ADD COLUMN tenantId varchar(64) NULL COMMENT '租户/集团 ID',
   ADD COLUMN schoolId varchar(64) NULL COMMENT '学校 ID',
-  ADD COLUMN externalUserId varchar(128) NULL COMMENT '书舟统一身份 ID（中央令牌的 sub），也承接合作方用户 ID',
+  ADD COLUMN authIssuer varchar(255) NULL COMMENT '签发中央身份的认证中心',
+  ADD COLUMN membershipId varchar(128) NULL COMMENT 'iam_membership.membership_id，用户在某租户/学校下的身份',
+  ADD COLUMN externalUserId varchar(128) NULL COMMENT '中央统一身份 ID（令牌的 sub），跨校时相同，只作追溯参考',
   ADD COLUMN phone varchar(32) NULL COMMENT '手机号，统一登录首次归并时的辅助匹配字段',
   ADD COLUMN email varchar(128) NULL COMMENT '邮箱';
 
--- 一个中央身份只能绑定一个课堂账号；MySQL 唯一索引允许多行 NULL，不影响本地账号
-CREATE UNIQUE INDEX uk_users_external_user ON users (externalUserId);
+-- 永久登录身份是 (issuer, membershipId)，不是 sub：同一自然人跨校任课会有多个 membership，
+-- 按 sub 建唯一约束会把两个学校身份并成一个账号。MySQL 唯一索引允许多行 NULL，不影响本地账号。
+CREATE UNIQUE INDEX uk_users_membership ON users (authIssuer, membershipId);
+CREATE INDEX idx_users_external_user ON users (externalUserId);
 CREATE INDEX idx_users_school_phone ON users (tenantId, schoolId, phone);
 
 CREATE TABLE IF NOT EXISTS platform_school_config (

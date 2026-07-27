@@ -889,10 +889,10 @@ AI 场景请求 -> 学校策略/内容安全 -> 模型路由 -> 本地或云端�
   - `shuzhou-jwks.service.ts` 拉取并缓存 JWKS（5 分钟 TTL、5 秒超时、1MB 上限），按 `kid` 取 RSA 公钥；
   - `shuzhou-oidc.service.ts` 做 RS256 验签与 claims 校验（`iss` 全等、`aud` 含 client_id、`token_use`、`sub`、`exp` 不容忍偏移、`nbf` 容忍 30 秒、`legacy_user_id`、`account_type`），并提供只读 header `alg` 的分流入口；
   - `shuzhou-sso.service.ts` 持有 PKCE 事务（5 分钟）与一次性票据（60 秒），负责拼授权地址和换码；
-  - `shuzhou-identity.service.ts` 把中央身份落到本地用户，优先按 `sub` 找已绑定账号，其次在同租户/同学校内按唯一且未绑定的手机号归并，最后首次建档；
+  - `shuzhou-identity.service.ts` 把中央身份落到本地用户：按 4.1 的永久登录身份 `(issuer, membership_id)` 找已绑定账号，其次在**同租户且同学校**内按唯一且未绑定的手机号归并，最后首次建档；令牌缺 `membership_id` 时直接拒绝登录，不建立可能错误的绑定；
   - `shuzhou.controller.ts` 暴露 `GET /auth/shuzhou/status|start|callback` 与 `POST /auth/shuzhou/ticket`。
 - `JwtAuthGuard` 改为按 JWT header 的 `alg` 分流：`RS256` 走中央令牌校验，`HS256` 沿用课堂自签会话令牌，存量接口零改动。
-- `UserEntity` 补 `tenantId`、`schoolId`、`externalUserId`（唯一）、`phone`、`email`；`20260724_platform_foundation.sql` 的列名同步改成 users 表既有的驼峰风格，避免 `DB_SYNCHRONIZE=true` 时重复建列。
+- `UserEntity` 补 `tenantId`、`schoolId`、`authIssuer`、`membershipId`、`externalUserId`、`phone`、`email`，唯一约束建在 `(authIssuer, membershipId)` 上。`externalUserId` 存的是 `sub`，同一自然人跨校任课时相同，只作追溯参考，不能当绑定键。`20260724_platform_foundation.sql` 的列名同步改成 users 表既有的驼峰风格，避免 `DB_SYNCHRONIZE=true` 时重复建列。
 - 中央 `role` claim 到本地角色走白名单（`SHUZHOU_AUTH_ADMIN_ROLES` 等），未登记的角色一律落到 `SHUZHOU_AUTH_DEFAULT_ROLE`，防止认证中心新增带 admin 字样的角色就白拿管理后台权限。
 - `AccessCodeMiddleware` 放行 `/api/v1/auth/shuzhou/*`：统一登录是浏览器跳转，带不上访问码请求头，这几个端点各自有 state / 授权码 / 一次性票据把关。
 
@@ -904,7 +904,13 @@ AI 场景请求 -> 学校策略/内容安全 -> 模型路由 -> 本地或云端�
 
 ### 24.4 尚未覆盖
 
+- **学校订阅未校验**：`shuzhou-classroom` 的 `app_code` 目前留空，认证中心不查 `campus_app` / `campus_school_app`，等于任何能登录智慧校园的人都能换到课堂令牌并被自动建档。4.2 要求的「校验学校订阅」这一条没做到，需要确定应用编码取值和已开通学校名单后补上。
 - WebSocket 握手仍是 `WS_AUTH_MODE=off`，没有要求携带短期 access token。
 - 大屏、教师端和学生端仍走邀请码 / kiosk，没有统一身份。
 - 合作方经 partner grant 进入课堂尚未接。
 - PKCE 事务与一次性票据存在进程内存里，课堂服务横向扩容时需要换成 Redis。
+
+### 24.5 与本方案仍存在的其他偏差
+
+- **学情事件命名不符 7.1/7.2**：实现用的是 `lesson_ended` 这类下划线命名、无版本号，信封也缺 `schema_version` 和 `actor`；八个事件里实际只发出 `lesson_ended` 一种。当前没有消费方，改名代价为零，接入前应先对齐。
+- **产品码口径与 22.6 不一致**：内部接口和表默认值确实用 `sanyuan-classroom`，但交付仓命名成了 `duoyuan-classroom-*`、包名也改成了显示名。要么改仓名，要么把 22.6 的措辞放宽到「内部接口与数据层使用稳定产品码」。

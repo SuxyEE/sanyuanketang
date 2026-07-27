@@ -58,25 +58,24 @@ export class UserService implements OnModuleInit {
     })
   }
 
-  /** 按书舟统一身份 ID 查已绑定用户 */
-  async findByExternalUserId(externalUserId: string) {
-    if (!externalUserId) return null
-    return this.userRepo.findOneBy({ externalUserId })
+  /** 按永久登录身份 (issuer, membershipId) 查已绑定用户 */
+  async findByMembership(authIssuer: string, membershipId: string) {
+    if (!authIssuer || !membershipId) return null
+    return this.userRepo.findOneBy({ authIssuer, membershipId })
   }
 
   /**
-   * 首次统一登录时的手机号归并候选：
-   * 只有在同一租户/学校范围内手机号唯一、且该账号尚未绑定其他中央身份时才可用，
-   * 否则宁可新建账号，也不要把两个人并成一个。
+   * 首次统一登录时的手机号归并候选。
+   *
+   * 必须同时限定租户和学校：缺任何一个都可能跨校匹配到同号的另一个人。
+   * 再要求范围内唯一且该账号尚未绑定中央身份，否则宁可新建账号，
+   * 也不要把两个人静默并成一个。
    */
   async findBindableByPhone(phone: string, tenantId?: string, schoolId?: string) {
-    if (!phone) return null
-    const where: Record<string, unknown> = { phone }
-    if (tenantId) where.tenantId = tenantId
-    if (schoolId) where.schoolId = schoolId
-    const matched = await this.userRepo.find({ where, take: 2 })
+    if (!phone || !tenantId || !schoolId) return null
+    const matched = await this.userRepo.find({ where: { phone, tenantId, schoolId }, take: 2 })
     if (matched.length !== 1) return null
-    return matched[0].externalUserId ? null : matched[0]
+    return matched[0].membershipId ? null : matched[0]
   }
 
   async existsByUsername(username: string) {
